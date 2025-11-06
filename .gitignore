@@ -1,0 +1,4 @@
+# Ignore png/gif files
+*.png
+*.gif
+*.DS_Store
