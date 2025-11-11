@@ -1,17 +1,17 @@
-# We have the dimensionless 1D time-independent Schrödinger equation
-# - d²ψ/d(xi)² + V(xi)ψ = Eψ
-# with potential V(xi) = - 1 / cosh²(xi)
+# We have the dimensionless 1D time-independent Schrodinger equation
+# - d^2 psi / d(xi)^2 + V(xi) psi = Epsi
+# with potential V(xi) = - 1 / cosh(xi)^2
 #
 # Overview:
 # - We discretize the second derivative with a central finite difference on a uniform grid.
-# - Dirichlet boundary conditions ψ(±L/2) = 0 are enforced by using only the N interior points.
+# - Dirichlet boundary conditions psi(+/- L/2) = 0 are enforced by using only the N interior points.
 # - This yields a symmetric tridiagonal Hamiltonian H (discrete operator) that we diagonalize.
 # - The "workspace" struct allows reusing buffers to minimize allocations.
 #
 # Notation:
-# - L: total domain length; h: grid spacing; N ≈ L/h - 1 interior grid points.
-# - q: coordinate scaling factor; potential is V(xi) = -sech²(q*xi).
-# - p and q are related by q = 1/√p (helpers provided).
+# - L: total domain length; h: grid spacing; N approx L/h - 1 interior grid points.
+# - q: coordinate scaling factor; potential is V(xi) = -sech(q*xi)^2.
+# - p and q are related by q = 1/sqrt(p) (helpers provided).
 #
 # Performance notes:
 # - @inbounds avoids bounds checks in tight loops (assumes indices are valid).
@@ -60,12 +60,12 @@ end
 """
     analytical_energy_levels(p) -> levels::Vector{Float64}
 
-Compute the bound-state energy levels for the Pöschl–Teller potential
-V(ξ) = -sech²(ξ) scaled by p via q = 1/sqrt(p).
+Compute the bound-state energy levels for the Poschl-Teller potential
+V(xi) = -sech(xi)^2 scaled by p via q = 1/sqrt(p).
 
 Details:
-- n runs from 0 to n_max = floor((√(1+4p) - 1)/2).
-- Returns energies E_n = -((√(1 + 4p) - (2n + 1))^2) / (4p).
+- n runs from 0 to n_max = floor((sqrt(1+4p) - 1)/2).
+- Returns energies E_n = -((sqrt(1 + 4p) - (2n + 1))^2) / (4p).
 """
 function analytical_energy_levels(p::T) where T<:Number
     n_max = floor(Int, (sqrt(1 + 4*p) - 1) / 2)
@@ -83,7 +83,7 @@ end
     cda_first(f2, f0, a)
 
 Second-order central difference approximation for the first derivative:
-f'(x) ≈ (f(x+a) - f(x-a)) / (2a).
+    f'(x) approx (f(x+a) - f(x-a)) / (2a).
 This helper expects pre-sampled values `f2 = f(x+a)` and `f0 = f(x-a)`.
 """
 function cda_first(f2::T, f0::T, a::T) where T<:AbstractFloat
@@ -94,7 +94,7 @@ end
     cda_second(f0, f1, f2, a)
 
 Second-order central difference approximation for the second derivative:
-f''(x) ≈ (f(x+a) - 2f(x) + f(x-a)) / a^2.
+    f''(x) approx (f(x+a) - 2f(x) + f(x-a)) / a^2.
 This helper expects `f0 = f(x-a)`, `f1 = f(x)`, `f2 = f(x+a)`.
 """
 function cda_second(f0::T, f1::T, f2::T, a::T) where T<:AbstractFloat
@@ -162,18 +162,18 @@ end
     assemble_hamiltonian!(L, h, q, ws) -> (N, H::SymTridiagonal)
 
 Assemble the symmetric tridiagonal Hamiltonian H for the operator
-    -d²/dξ² + V(ξ)  with  V(ξ) = -sech²(q ξ)
+    -d^2/dxi^2 + V(xi)  with  V(xi) = -sech(q * xi)^2
 on the N interior points of the uniform grid in (-L/2, L/2), with spacing h.
 
 Notes:
 - Dirichlet BCs at the boundaries are implicit by excluding endpoints.
 - Uses `ws` views to avoid allocations.
-- Returns N = number of interior points, and the SymTridiagonal H (or nothing if N ≤ 0).
+ - Returns N = number of interior points, and the SymTridiagonal H (or nothing if N <= 0).
 """
 function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWorkspace)
     N = round(Int, L / h) - 1              # number of interior points
     # Early-outs and validation.
-    # - If N ≤ 0, the domain has no interior points at this resolution.
+    # - If N <= 0, the domain has no interior points at this resolution.
     # - If N exceeds workspace capacity, instruct the user to enlarge it.
     if N <= 0
         return 0, nothing
@@ -197,7 +197,7 @@ function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWor
     @inbounds @simd for i in 1:N
         xi[i] = -half_L + h * i
     end
-    # Discrete -d²/dξ² contributes 2/h² to the diagonal and -1/h² to neighbors.
+    # Discrete -d^2/dxi^2 contributes 2/h^2 to the diagonal and -1/h^2 to neighbors.
     @inbounds @simd for i in 1:N
         diag[i] = 2.0 * inv_h2
     end
@@ -206,7 +206,7 @@ function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWor
             offdiag[i] = -inv_h2
         end
     end
-    # Add diagonal potential term V(ξ) = -sech²(q ξ).
+    # Add diagonal potential term V(xi) = -sech(q * xi)^2.
     @inbounds @simd for i in 1:N
         diag[i] += -1.0 / cosh(xi[i] * q)^2
     end
