@@ -3,7 +3,7 @@ include("../SolutionFunctions.jl")
 ## ALL PARAMETERS TO BE SET HERE
 
 P = 50.0 # Our dimensionless parameter
-N = 500  # number of interior points
+N = 1000  # number of interior points
 # DOMAIN SIZE HAS TO BE ADJUSTED BASED ON P
 L = 10.0*1/(q_of_p(P))  # domain size
 println("Using domain size L = $L for P = $P")
@@ -29,6 +29,14 @@ end
 # Solve analytically
 E_analytical = analytical_energy_levels(P)
 
+using Statistics
+
+# Compute and print the average percentage error for the first 5 states
+ncomp = min(5, length(E), length(E_analytical))
+percent_errors = [percent_error(E_analytical[i], E[i]) for i in 1:ncomp]
+avg_percent_error = mean(percent_errors)
+println("Average percentage error across first $ncomp states: $(round(avg_percent_error, digits=4))%")
+
 using Plots
 
 println("Lowest 5 energy eigenvalues:")
@@ -40,7 +48,8 @@ plt = plot(
     xi, psi[:, 1];
     label = "n=0", xlabel = "xi", ylabel = "psi(xi)",
     legend = :topright, dpi = 500,
-    lw = 3, linestyle = styles[1]
+    lw = 3, linestyle = styles[1],
+    guidefont = font(16), tickfont = font(12)
 )
 # Plot next few eigenfunctions with different line styles
 for (i, n) in enumerate(2:5)
@@ -49,7 +58,7 @@ for (i, n) in enumerate(2:5)
         label = "n=$(n-1)", lw = 3, linestyle = styles[i + 1]
     )
 end
-savefig(plt, "Coursework/Q2/Plots/PlotStates_P$(Int(P))_N$(N).png")
+savefig(plt, "./Q2/Plots/PlotStates_P$(Int(P))_N$(N).png")
 
 
 nstates = min(5, size(psi, 2))
@@ -59,7 +68,8 @@ gap = 1.6 * maxamp                       # a bit more separation for clarity
 offsets = (0:nstates-1) .* gap
 colors = palette(:tab10)
 plt_offset = plot(; legend = false, dpi = 500, size = (720, 480),
-    xlabel = "xi", ylabel = "state offsets")
+    xlabel = "xi", ylabel = "state offsets",
+    guidefont = font(16), tickfont = font(12))
 for i in 1:nstates
     # light baseline at each offset with state label as y-tick
     hline!([offsets[i]]; c = :gray, alpha = 0.35, lw = 1, label = "")
@@ -74,4 +84,4 @@ for i in 1:nstates
     annotate!(annot_x, offsets[i] + 0.2 * gap,
     text("E=$(round(E[i], digits = 3))", 16, :black))
 end
-savefig(plt_offset, "Coursework/Q2/Plots/PlotStates_offset_P$(Int(P))_N$(N)_clear.png")
+savefig(plt_offset, "./Q2/Plots/PlotStates_offset_P$(Int(P))_N$(N)_clear.png")

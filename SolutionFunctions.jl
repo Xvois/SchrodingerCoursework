@@ -23,33 +23,56 @@ using LinearAlgebra
 # -- Helper Functions --
 
 """
-    q_of_p(p)
-
 Return the coordinate scaling factor q = 1/sqrt(p) for a given p.
-Both p and q are scalar numbers. This relation is used to scale the potential.
 """
 function q_of_p(p::T) where T<:Number
     return 1 / sqrt(p)
 end
 
 """
-    p_of_q(q)
-
 Inverse of `q_of_p`: return p = 1/q^2.
 """
 function p_of_q(q::T) where T<:Number
     return 1 / (q^2)
 end
 
+"""
+    xi_to_index(x, L, N; mode=:floor) -> idx::Int
+
+Map a coordinate x in [-L/2, L/2] to the index of the nearest interior
+grid point on a uniform grid with N interior points. The grid spacing is
+dx = L/(N+1) and interior points are xi_j = -L/2 + j*dx for j=1..N.
+
+Arguments
+- x: coordinate (Real)
+- L: domain length (Real)
+- N: number of interior points (Int)
+
+Keyword arguments
+- mode: :floor (default) uses trunc((x+L/2)/dx)+1 which matches the
+  indexing used elsewhere; :nearest uses round((x+L/2)/dx) to pick the
+  closest grid point.
+
+The returned index is clamped to 1..N.
+"""
+function xi_to_index(x::Real, L::Real, N::Int; mode::Symbol = :floor)
+    dx = L / (N + 1)
+    t = (x + 0.5 * L) / dx
+    idx = mode == :nearest ? round(Int, t) : trunc(Int, t) + 1
+    return clamp(idx, 1, N)
+end
+
+
 function prob_density(psi::AbstractVector{<:ComplexF64})
     return abs2.(psi)
 end
 
 """
-    percent_error(analytical, numerical) -> percent
-
 Compute the percent error between an analytical and a numerical value.
-Example: percent_error(-1.0, -0.98) == 2.0.
+```jldoctest
+julia> percent_error(1.00, 0.98)
+2.0
+```
 """
 function percent_error(analytical::T, numerical::T) where T<:AbstractFloat
     return abs((analytical - numerical) / analytical) * 100
@@ -61,11 +84,8 @@ end
     analytical_energy_levels(p) -> levels::Vector{Float64}
 
 Compute the bound-state energy levels for the Poschl-Teller potential
-V(xi) = -sech(xi)^2 scaled by p via q = 1/sqrt(p).
+`V(xi) = -sech(q*xi)^2`.
 
-Details:
-- n runs from 0 to n_max = floor((sqrt(1+4p) - 1)/2).
-- Returns energies E_n = -((sqrt(1 + 4p) - (2n + 1))^2) / (4p).
 """
 function analytical_energy_levels(p::T) where T<:Number
     n_max = floor(Int, (sqrt(1 + 4*p) - 1) / 2)
@@ -84,7 +104,11 @@ end
 
 Second-order central difference approximation for the first derivative:
     f'(x) approx (f(x+a) - f(x-a)) / (2a).
-This helper expects pre-sampled values `f2 = f(x+a)` and `f0 = f(x-a)`.
+
+```jldoctest
+julia> cda_first(2.0, 0.0, 1.0)
+1.0
+```    
 """
 function cda_first(f2::T, f0::T, a::T) where T<:AbstractFloat
     return (f2 - f0) / (2 * a)
@@ -94,41 +118,16 @@ end
     cda_second(f0, f1, f2, a)
 
 Second-order central difference approximation for the second derivative:
-    f''(x) approx (f(x+a) - 2f(x) + f(x-a)) / a^2.
-This helper expects `f0 = f(x-a)`, `f1 = f(x)`, `f2 = f(x+a)`.
+    `f''(x) approx (f(x+a) - 2f(x) + f(x-a)) / a^2`.
+```jldoctest
+julia> cda_second(1.0, 2.0, 1.0, 1.0)
+0.0
+```
 """
 function cda_second(f0::T, f1::T, f2::T, a::T) where T<:AbstractFloat
     return (f2 - 2*f1 + f0) / (a^2)
 end
 
-"""
-    rk4_step(f, y, t, dt)
-Perform a single Runge-Kutta 4th order (RK4) step.
-"""
-function rk4_step(f, y, t, dt)
-    k1 = f(t, y)
-    k2 = f(t + dt/2, y + dt/2 * k1)
-    k3 = f(t + dt/2, y + dt/2 * k2)
-    k4 = f(t + dt, y + dt * k3)
-    return y + (dt/6) * (k1 + 2k2 + 2k3 + k4)
-end
-
-"""
-    rk4_definite_integrate(f, a, b, dt)
-Perform definite integration of f from a to b using RK4 with step size dt.
-"""
-function rk4_definite_integrate(f, a::Float64, b::Float64, dt::Float64)
-    nsteps = ceil(Int, (b - a) / dt)
-    dt_adjusted = (b - a) / nsteps  # adjust dt to fit exactly
-    integral = 0.0
-    t = a
-    y = 0.0
-    for _ in 1:nsteps
-        y = rk4_step((t, y) -> f(t), y, t, dt_adjusted)
-        t += dt_adjusted
-    end
-    return y
-end
 """
     struct SolverWorkspace
 
@@ -161,13 +160,12 @@ end
 """
     assemble_hamiltonian!(L, h, q, ws) -> (N, H::SymTridiagonal)
 
-Assemble the symmetric tridiagonal Hamiltonian H for the operator
-    -d^2/dxi^2 + V(xi)  with  V(xi) = -sech(q * xi)^2
+Assemble the symmetric tridiagonal Hamiltonian H for the Poschl-Teller potential
 on the N interior points of the uniform grid in (-L/2, L/2), with spacing h.
 
-Notes:
+# Notes:
 - Dirichlet BCs at the boundaries are implicit by excluding endpoints.
-- Uses `ws` views to avoid allocations.
+- Uses [`SolverWorkspace`](@ref) views to avoid allocations.
  - Returns N = number of interior points, and the SymTridiagonal H (or nothing if N <= 0).
 """
 function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWorkspace)
@@ -215,6 +213,8 @@ function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWor
     return N, SymTridiagonal(diag, offdiag)
 end
 
+
+
 """
     compute_lowest_energies!(dest, L, h, q, ws) -> dest
 
@@ -245,6 +245,8 @@ function compute_lowest_energies!(dest::Vector{Float64}, L::Float64, h::Float64,
     return dest
 end
 
+# -- Solver Interface --
+
 """
     solve_schrodinger(L, h, q, ws) -> (eigenvalues, eigenvectors, xi)
 
@@ -272,7 +274,7 @@ end
 """
     solve_schrodinger(L, h, q) -> (eigenvalues, eigenvectors, xi)
 
-Convenience overload that allocates a temporary `SolverWorkspace` sized for this grid
+Convenience overload that allocates a temporary [`SolverWorkspace`](@ref) sized for this grid
 and delegates to the workspace-based method.
 """
 function solve_schrodinger(L::Float64, h::Float64, q::Float64)
@@ -294,36 +296,24 @@ function solve_schrodinger(N::Int, L::Float64, q::Float64)
     return solve_schrodinger(L, h, q)
 end
 
-"""
-    xi_to_index(x, L, N; mode=:floor) -> idx::Int
-
-Map a coordinate x in [-L/2, L/2] to the index of the nearest interior
-grid point on a uniform grid with N interior points. The grid spacing is
-dx = L/(N+1) and interior points are xi_j = -L/2 + j*dx for j=1..N.
-
-Arguments
-- x: coordinate (Real)
-- L: domain length (Real)
-- N: number of interior points (Int)
-
-Keyword arguments
-- mode: :floor (default) uses trunc((x+L/2)/dx)+1 which matches the
-  indexing used elsewhere; :nearest uses round((x+L/2)/dx) to pick the
-  closest grid point.
-
-The returned index is clamped to 1..N.
-"""
-function xi_to_index(x::Real, L::Real, N::Int; mode::Symbol = :floor)
-    dx = L / (N + 1)
-    t = (x + 0.5 * L) / dx
-    idx = mode == :nearest ? round(Int, t) : trunc(Int, t) + 1
-    return clamp(idx, 1, N)
-end
 
 """
     evolve_coeffs!(c0, E, dt)
 Evolves the coefficients c0 in the eigenbasis over time dt given eigenvalues E from
-a time-independent Hamiltonian H.
+a *time-independent Hamiltonian H*.
+
+# Example:
+```jldoctest
+julia> c = complex.([1.0, 0.0, 0.0])
+E = [-1.0, 0.0, 1.0] # assumed to be eigenvalues from a time-independent Hamiltonian H #
+dt = pi/2
+julia> evolve_coeffs!(c, E, dt);
+julia> c
+3-element Vector{ComplexF64}:
+ 0.0 + 1.0im
+ 0.0 + 0.0im
+ 0.0 - 1.0im
+```
 """
 function evolve_coeffs!(c0::Vector{ComplexF64}, E::Vector{Float64}, dt::Float64)
     @inbounds @simd for i in 1:length(c0)

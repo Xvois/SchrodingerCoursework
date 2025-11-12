@@ -2,7 +2,7 @@ include("../SolutionFunctions.jl")
 
 
 P = 50.0                 # Choose p so that there are at least three bound states (p >= 6 suffices)
-N = 500               # number of interior grid points
+N = 1000               # number of interior grid points
 # DOMAIN SIZE scaled with p (width proportional to 1/q = sqrt(p)) to capture the tails well
 L = 10.0 / q_of_p(P)     # domain size
 
@@ -30,18 +30,33 @@ if nbound < 3
     @warn "Parameter p=$(P) yields only $(nbound) bound states; consider increasing p (p >= 6)."
 end
 
-# Prepare grid spacing and normalize fundamental mode u0(xi) by the integral <u0,u0> = integral |u0|^2 dxi approx dx * sum |u0_j|^2
+# Prepare grid spacing and normalize ALL eigenvectors in the L^2 sense (integral |psi|^2 dxi = 1)
 dx = L / (N + 1)
-u0 = @view psi[:, 1]
-u0_intnorm = sqrt(dx * sum(abs2, u0))
-# u0n normalized so that integral |u0|^2 dxi = 1
-u0n = u0 ./ u0_intnorm
 
-# Initial condition psi(xi, 0) = A u0(xi) with A set so that integral |psi|^2 dxi = 1 -> A = 1 for u0n
+# Normalize all eigenvectors with dx-weighted L^2 norm
+psi_normalized = similar(psi)
+for i in 1:size(psi, 2)
+    norm_L2 = sqrt(dx * sum(abs2, psi[:, i]))
+    psi_normalized[:, i] = psi[:, i] ./ norm_L2
+end
+
+# Update psi to use normalized eigenvectors
+psi = psi_normalized
+
+# Fundamental mode u0(xi) is now L^2-normalized
+u0n = @view psi[:, 1]
+
 psi0 = complex.(u0n)                # promote to complex for time evolution
 
-# Project initial state into eigenbasis coefficients c(0) = V' * psi0 (Euclidean). These evolve as exact phases in tau.
-c0 = complex.(psi' * psi0)
+# Project initial state into eigenbasis coefficients c(0) using dx-weighted L^2 inner product for consistency
+c0 = complex.([dx * sum(conj.(psi[:, i]) .* psi0) for i in 1:size(psi, 2)])
+
+# Validation: check that the initial projection is properly normalized (should be ≈ 1)
+norm_check = sum(abs2, c0)
+println("Initial state normalization check: ∑|cₙ(0)|² = $(round(norm_check, digits=6)) (should be ≈ 1)")
+if abs(norm_check - 1.0) > 0.01
+    @warn "Initial state projection normalization deviates from 1 by $(abs(norm_check - 1.0))"
+end
 
 # Dimensionless time tau satisfies i dpsi/dtau = H psi with evolution exp(-i * E * tau).
 # Q3 asks for t in [0, 8*pi*hbar/|E0|] -> in tau this is tau in [0, 8*pi], since tau = t * |E0| / hbar.
@@ -76,4 +91,4 @@ plt = plot(xscaled, real.(c0_series);
 plot!(plt, xscaled, imag.(c0_series); label = "Im(c0)")
 plot!(plt, xscaled, abs.(c0_series); label = "|c0|")
 
-savefig(plt, "Coursework/Q3/Plots/c0_vs_tOverT0_P$(Int(P))_N$(N).png")
+savefig(plt, "./Q3/Plots/c0_vs_tOverT0_P$(Int(P))_N$(N).png")

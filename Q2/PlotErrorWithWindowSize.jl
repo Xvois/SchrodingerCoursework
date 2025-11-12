@@ -146,4 +146,4 @@ if levels_to_plot >= 1
     end
 end
 
-savefig(plt, "Coursework/Q2/Plots/Error_vs_WindowSize_P$(Int(P))_h$(h).png")
+savefig(plt, "./Q2/Plots/Error_vs_WindowSize_P$(Int(P))_h$(h).png")
