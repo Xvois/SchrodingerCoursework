@@ -33,26 +33,19 @@ end
 # Prepare grid spacing and normalize ALL eigenvectors in the L^2 sense (integral |psi|^2 dxi = 1)
 dx = L / (N + 1)
 
-# Normalize all eigenvectors with dx-weighted L^2 norm
-psi_normalized = similar(psi)
-for i in 1:size(psi, 2)
-    norm_L2 = sqrt(dx * sum(abs2, psi[:, i]))
-    psi_normalized[:, i] = psi[:, i] ./ norm_L2
+# Normalize all eigenvectors wit h dx-weighted L^2 norm using helper
+@views for i in 1:size(psi, 2)
+    normalise_L2!(psi[:, i], dx)
 end
 
-# Update psi to use normalized eigenvectors
-psi = psi_normalized
-
 # Fundamental mode u0(xi) is now L^2-normalized
-u0n = @view psi[:, 1]
-
-psi0 = complex.(u0n)                # promote to complex for time evolution
+fundamental_mode = complex.(Vector(psi[:, 1]))
 
 # Project initial state into eigenbasis coefficients c(0) using dx-weighted L^2 inner product for consistency
-c0 = complex.([dx * sum(conj.(psi[:, i]) .* psi0) for i in 1:size(psi, 2)])
+c = project_onto_basis_L2(fundamental_mode, psi, dx)
 
 # Validation: check that the initial projection is properly normalized (should be ≈ 1)
-norm_check = sum(abs2, c0)
+norm_check = sum(abs2, c)
 println("Initial state normalization check: ∑|cₙ(0)|² = $(round(norm_check, digits=6)) (should be ≈ 1)")
 if abs(norm_check - 1.0) > 0.01
     @warn "Initial state projection normalization deviates from 1 by $(abs(norm_check - 1.0))"
@@ -66,8 +59,8 @@ dtau = 0.01
 tau = 0:dtau:tau_end
 
 # Evolve coefficients exactly in tau and reconstruct psi(xi, tau)
-coeffs = Matrix{ComplexF64}(undef, length(c0), length(tau))
-cT = copy(c0)
+coeffs = Matrix{ComplexF64}(undef, length(c), length(tau))
+cT = copy(c)
 for (k, _) in enumerate(tau)
     coeffs[:, k] = cT
     evolve_coeffs!(cT, E, dtau)

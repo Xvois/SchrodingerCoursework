@@ -195,15 +195,18 @@ function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWor
     @inbounds @simd for i in 1:N
         xi[i] = -half_L + h * i
     end
+
     # Discrete -d^2/dxi^2 contributes 2/h^2 to the diagonal and -1/h^2 to neighbors.
     @inbounds @simd for i in 1:N
         diag[i] = 2.0 * inv_h2
     end
+
     if N > 1
         @inbounds @simd for i in 1:(N - 1)
             offdiag[i] = -inv_h2
         end
     end
+
     # Add diagonal potential term V(xi) = -sech(q * xi)^2.
     @inbounds @simd for i in 1:N
         diag[i] += -1.0 / cosh(xi[i] * q)^2
@@ -211,38 +214,6 @@ function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWor
 
     # Return the assembled symmetric tridiagonal matrix.
     return N, SymTridiagonal(diag, offdiag)
-end
-
-
-
-"""
-    compute_lowest_energies!(dest, L, h, q, ws) -> dest
-
-Compute the smallest eigenvalues of the Hamiltonian and store them into `dest`.
-- The number of values written is min(length(dest), N).
-- Remaining entries (if any) are filled with NaN.
-"""
-function compute_lowest_energies!(dest::Vector{Float64}, L::Float64, h::Float64, q::Float64, ws::SolverWorkspace)
-    # Assemble H on the current grid.
-    N, H = assemble_hamiltonian!(L, h, q, ws)
-    if N == 0
-        fill!(dest, NaN)
-        return dest
-    end
-
-    # Extract eigenvalues of the symmetric tridiagonal matrix efficiently.
-    eigvals = LinearAlgebra.eigvals(H)
-    # Copy as many as requested into `dest`; pad with NaN if fewer are available.
-    limit = min(length(dest), length(eigvals))
-    @inbounds @simd for i in 1:limit
-        dest[i] = eigvals[i]
-    end
-    if limit < length(dest)
-        @inbounds @simd for i in (limit + 1):length(dest)
-            dest[i] = NaN
-        end
-    end
-    return dest
 end
 
 # -- Solver Interface --
@@ -266,7 +237,7 @@ function solve_schrodinger(L::Float64, h::Float64, q::Float64, ws::SolverWorkspa
     if N == 0
         return [Inf], nothing, Float64[]
     end
-    eig = eigen(H)
+    eig = eigen(H, -1, 0) # compute valid energies and eigenvectors only
     xi_view = @view ws.xi[1:N]
     return eig.values, eig.vectors, copy(xi_view)
 end
@@ -299,7 +270,7 @@ end
 
 """
     evolve_coeffs!(c0, E, dt)
-Evolves the coefficients c0 in the eigenbasis over time dt given eigenvalues E from
+Evolves the coefficients `c0` in the eigenbasis over time dt given eigenvalues E from
 a *time-independent Hamiltonian H*.
 
 # Example:
@@ -320,3 +291,63 @@ function evolve_coeffs!(c0::Vector{ComplexF64}, E::Vector{Float64}, dt::Float64)
         c0[i] *= exp(-im * E[i] * dt)
     end
 end
+
+"""
+    normalise_L2(v, dx; atol=1e-14)
+
+
+Examples
+```julia
+dx = 0.01
+u = randn(1000)
+un = normalise_L2(u, dx)
+@assert isapprox(dx * sum(abs2, un), 1.0; rtol=1e-12)
+```
+"""
+function normalise_L2(v::AbstractVector{T}, dx::Real; atol::Real=1e-14) where {T<:Number}
+    n2 = dx * sum(abs2, v)
+    if !isfinite(n2) || n2 < atol
+        throw(ArgumentError("Cannot normalize: dx-weighted L² norm ≈ $(n2)."))
+    end
+    invn = inv(sqrt(n2))
+    return invn .* v
+end
+
+function normalise_L2!(v::AbstractVector{T}, dx::Real; atol::Real=1e-14) where {T<:Number}
+    dx > 0 || throw(ArgumentError("dx must be positive, got $dx"))
+    n2 = dx * sum(abs2, v)
+    if !isfinite(n2) || n2 < atol
+        throw(ArgumentError("Cannot normalize: dx-weighted L² norm ≈ $(n2)."))
+    end
+    invn = inv(sqrt(n2))
+    v .*= invn
+    return v
+end
+
+"""
+    project_L2(phi, psi, dx) -> c::ComplexF64
+
+dx-weighted L2 projection (inner product) of `psi` onto `phi`:
+< phi | psi > = int(conj(phi(x)) * psi(x) dx) approx dx * sum conj(phi_i) * psi_i
+
+"""
+function project_L2(phi::AbstractVector{T1}, psi::AbstractVector{T2}, dx::Real) where {T1<:Number,T2<:Number}
+    @assert length(phi) == length(psi) "Vectors must have the same length"
+    return dx * sum(conj.(phi) .* psi)
+end
+
+"""
+    project_onto_basis_L2(psi, basis, dx) -> coeffs::Vector{ComplexF64}
+
+Project `psi` onto each column of `basis` using the dx-weighted L2 inner product.
+"""
+function project_onto_basis_L2(psi::AbstractVector{T}, basis::AbstractMatrix{S}, dx::Real) where {T<:Number,S<:Number}
+    @assert size(basis, 1) == length(psi) "Basis row count must match length of psi"
+    ncols = size(basis, 2)
+    coeffs = Vector{ComplexF64}(undef, ncols)
+    @inbounds for i in 1:ncols
+        coeffs[i] = dx * sum(conj.(@view basis[:, i]) .* psi)
+    end
+    return coeffs
+end
+

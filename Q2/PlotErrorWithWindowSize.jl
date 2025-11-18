@@ -28,11 +28,20 @@ N_candidates = round.(Int, L_values ./ h) .- 1
 maxN = max(1, maximum(N_candidates))
 workspaces = [SolverWorkspace(maxN) for _ in 1:nthreads_running]
 
-function calculate_single_errors!(dest::Vector{Float64}, L::Float64, q::Float64, h::Float64, E_analytical::Vector{Float64}, ws::SolverWorkspace, buffer::Vector{Float64})
-    energies = compute_lowest_energies!(buffer, L, h, q, ws)
-    @inbounds @simd for idx in eachindex(dest)
-        energy = energies[idx]
-        dest[idx] = isfinite(energy) ? percent_error(E_analytical[idx], energy) : NaN
+function calculate_single_errors!(dest::Vector{Float64}, L::Float64, q::Float64, h::Float64, E_analytical::Vector{Float64}, ws::SolverWorkspace, _buffer::Vector{Float64})
+    # Assemble tridiagonal Hamiltonian reusing workspace (no large dense matrices)
+    N, H = assemble_hamiltonian!(L, h, q, ws)
+    if N == 0
+        fill!(dest, NaN)
+        return dest
+    end
+    all_vals = eigvals(H)
+    nlevels = length(E_analytical)
+    @assert length(dest) >= nlevels "Destination array too small for number of levels"
+    @assert length(all_vals) >= nlevels "Computed energies fewer than expected levels"
+    @inbounds @simd for i in 1:nlevels
+        ev = all_vals[i]
+        dest[i] = isfinite(ev) ? percent_error(E_analytical[i], ev) : NaN
     end
     return dest
 end
@@ -66,7 +75,7 @@ function calculate_errors(L_values::AbstractVector{Float64}, h::Float64, q::Floa
     return E_errors
 end
 
-E_errors = calculate_errors(L_values, h, q, E_analytical, workspaces)
+E_errors = @time calculate_errors(L_values, h, q, E_analytical, workspaces)
 
 # Plot the error against window size L with shaded regions
 using Plots
