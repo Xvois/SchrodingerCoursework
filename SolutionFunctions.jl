@@ -1,18 +1,3 @@
-# We have the dimensionless 1D time-independent Schrodinger equation
-# - d^2 psi / d(xi)^2 + V(xi) psi = Epsi
-# with potential V(xi) = - 1 / cosh(xi)^2
-#
-# Overview:
-# - We discretize the second derivative with a central finite difference on a uniform grid.
-# - Dirichlet boundary conditions psi(+/- L/2) = 0 are enforced by using only the N interior points.
-# - This yields a symmetric tridiagonal Hamiltonian H (discrete operator) that we diagonalize.
-# - The "workspace" struct allows reusing buffers to minimize allocations.
-#
-# Notation:
-# - L: total domain length; h: grid spacing; N approx L/h - 1 interior grid points.
-# - q: coordinate scaling factor; potential is V(xi) = -sech(q*xi)^2.
-# - p and q are related by q = 1/sqrt(p) (helpers provided).
-#
 # Performance notes:
 # - @inbounds avoids bounds checks in tight loops (assumes indices are valid).
 # - @simd allows the compiler to vectorize loops when safe.
@@ -237,7 +222,6 @@ function solve_static_schrodinger(N::Int, L::Float64, V::Function)
     return solve_static_schrodinger(L, h, V)
 end
 
-
 """
     evolve_coeffs!(c0, E, dt)
 Evolves the coefficients `c0` in the eigenbasis over time dt given eigenvalues E from
@@ -260,6 +244,83 @@ function evolve_coeffs!(c0::Vector{ComplexF64}, E::Vector{Float64}, dt::Float64)
     @inbounds @simd for i in 1:length(c0)
         c0[i] *= exp(-im * E[i] * dt)
     end
+end
+
+"""
+    evolve_dynamic_coeffs!(psi, L, h, Vxt, dt; nsteps=1, ws, basis=nothing, store=true)
+
+Crank-Nicolson time stepper for a state vector `psi` on the interior grid of length L with spacing h.
+- Vxt(xi, t) should return the potential at spatial point xi and time t.
+- dt: time-step size.
+Keyword args:
+- nsteps: number of CN steps to take (default 1).
+- ws: SolverWorkspace for assembly (required).
+- basis: optional matrix whose columns are basis functions (for projection); if provided,
+  the function returns a matrix of coefficients with size (ncols, nsteps+1).
+- store: if true and basis provided, store coefficients at t=0 and after each step.
+
+Returns:
+- psi (updated in-place)
+- coeffs (if basis provided) else nothing
+"""
+function evolve_dynamic_coeffs!(psi::Vector{ComplexF64},
+                                L::Float64, h::Float64,
+                                Vxt::Function,
+                                dt::Float64;
+                                nsteps::Int=1,
+                                ws::SolverWorkspace,
+                                basis::Union{Nothing,AbstractMatrix{<:Number}}=nothing,
+                                store::Bool=true)
+
+    N_expected = round(Int, L / h) - 1
+    length(psi) == N_expected || throw(ArgumentError("psi length does not match grid interior points"))
+
+    # Prepare coefficient storage if requested
+    coeffs = nothing
+    if basis !== nothing && store
+        ncols = size(basis, 2)
+        coeffs = Vector{ComplexF64}[]
+        push!(coeffs, project_onto_basis_L2(psi, basis, h))
+    end
+
+    t = 0.0
+    for step in 1:nsteps
+        # assemble H(t) as SymTridiagonal using V(xi,t)
+        V_here = x -> Vxt(x, t)
+        N, H = assemble_static_hamiltonian!(L, h, V_here, ws)
+        if N == 0
+            return psi, coeffs
+        end
+
+        # Extract real diagonals and off-diagonals
+        diag_r = copy(H.d)                 # real diagonal
+        off_r = copy(H.e)                  # real off-diagonal (length N-1)
+
+        # Build complex CN matrices: A = I + i dt/2 H, B = I - i dt/2 H
+        diagA = ComplexF64.(1.0 .+ im * (dt/2) .* diag_r)
+        diagB = ComplexF64.(1.0 .- im * (dt/2) .* diag_r)
+        offA = ComplexF64.(im * (dt/2) .* off_r)
+        offB = -offA
+
+        A = Tridiagonal(offA, diagA, offA)
+        B = Tridiagonal(offB, diagB, offB)
+
+        # rhs = B * psi
+        rhs = B * psi
+
+        # solve A * psi_next = rhs using efficient tridiagonal solver
+        psi .= A \ rhs
+
+        # advance time
+        t += dt
+
+        # optional projection onto provided basis
+        if basis !== nothing && store
+            push!(coeffs, project_onto_basis_L2(psi, basis, h))
+        end
+    end
+
+    return psi, coeffs
 end
 
 """
