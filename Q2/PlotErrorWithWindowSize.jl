@@ -28,9 +28,9 @@ N_candidates = round.(Int, L_values ./ h) .- 1
 maxN = max(1, maximum(N_candidates))
 workspaces = [SolverWorkspace(maxN) for _ in 1:nthreads_running]
 
-function calculate_single_errors!(dest::Vector{Float64}, L::Float64, q::Float64, h::Float64, E_analytical::Vector{Float64}, ws::SolverWorkspace, _buffer::Vector{Float64})
+function calculate_single_errors!(dest::Vector{Float64}, L::Float64, V::Function, h::Float64, E_analytical::Vector{Float64}, ws::SolverWorkspace, _buffer::Vector{Float64})
     # Assemble tridiagonal Hamiltonian reusing workspace (no large dense matrices)
-    N, H = assemble_hamiltonian!(L, h, q, ws)
+    N, H = assemble_static_hamiltonian!(L, h, V, ws)
     if N == 0
         fill!(dest, NaN)
         return dest
@@ -46,7 +46,7 @@ function calculate_single_errors!(dest::Vector{Float64}, L::Float64, q::Float64,
     return dest
 end
 
-function calculate_errors(L_values::AbstractVector{Float64}, h::Float64, q::Float64, E_analytical::Vector{Float64}, workspaces::Vector{SolverWorkspace})
+function calculate_errors(L_values::AbstractVector{Float64}, h::Float64, V::Function, E_analytical::Vector{Float64}, workspaces::Vector{SolverWorkspace})
     nL = length(L_values)
     nlevels = length(E_analytical)
     E_errors = Array{Float64}(undef, nlevels, nL)
@@ -63,7 +63,7 @@ function calculate_errors(L_values::AbstractVector{Float64}, h::Float64, q::Floa
                     break
                 end
                 L = L_values[idx]
-                calculate_single_errors!(local_errors, L, q, h, E_analytical, local_ws, energy_buffer)
+                calculate_single_errors!(local_errors, L, V, h, E_analytical, local_ws, energy_buffer)
                 @inbounds @simd for level in 1:nlevels
                     E_errors[level, idx] = local_errors[level]
                 end
@@ -75,7 +75,8 @@ function calculate_errors(L_values::AbstractVector{Float64}, h::Float64, q::Floa
     return E_errors
 end
 
-E_errors = @time calculate_errors(L_values, h, q, E_analytical, workspaces)
+V(x) = -sech(q*x)^2
+E_errors = @time calculate_errors(L_values, h, V, E_analytical, workspaces)
 
 # Plot the error against window size L with shaded regions
 using Plots

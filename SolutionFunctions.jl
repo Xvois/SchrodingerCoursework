@@ -97,41 +97,11 @@ function analytical_energy_levels(p::T) where T<:Number
     return levels
 end
 
-# -- Numerical Methods --
-
-"""
-    cda_first(f2, f0, a)
-
-Second-order central difference approximation for the first derivative:
-    f'(x) approx (f(x+a) - f(x-a)) / (2a).
-
-```jldoctest
-julia> cda_first(2.0, 0.0, 1.0)
-1.0
-```    
-"""
-function cda_first(f2::T, f0::T, a::T) where T<:AbstractFloat
-    return (f2 - f0) / (2 * a)
-end
-
-"""
-    cda_second(f0, f1, f2, a)
-
-Second-order central difference approximation for the second derivative:
-    `f''(x) approx (f(x+a) - 2f(x) + f(x-a)) / a^2`.
-```jldoctest
-julia> cda_second(1.0, 2.0, 1.0, 1.0)
-0.0
-```
-"""
-function cda_second(f0::T, f1::T, f2::T, a::T) where T<:AbstractFloat
-    return (f2 - 2*f1 + f0) / (a^2)
-end
 
 """
     struct SolverWorkspace
 
-Preallocated buffers to assemble the tridiagonal Hamiltonian without reallocations.
+Preallocated buffers to assemble the tridiagonal time independent Hamiltonian without reallocations.
 Fields:
 - xi: grid coordinates (interior points only)
 - diag: diagonal entries of H
@@ -158,17 +128,17 @@ function SolverWorkspace(maxN::Int)
 end
 
 """
-    assemble_hamiltonian!(L, h, q, ws) -> (N, H::SymTridiagonal)
+    assemble_static_hamiltonian!(L, h, V, ws) -> (N, H::SymTridiagonal)
 
-Assemble the symmetric tridiagonal Hamiltonian H for the Poschl-Teller potential
-on the N interior points of the uniform grid in (-L/2, L/2), with spacing h.
+Assemble the symmetric tridiagonal time independent Hamiltonian H for the potential V(xi)
+on the N interior points of the uniform grid in (-L/2, L/2), with spacing h using CDA.
 
 # Notes:
 - Dirichlet BCs at the boundaries are implicit by excluding endpoints.
 - Uses [`SolverWorkspace`](@ref) views to avoid allocations.
  - Returns N = number of interior points, and the SymTridiagonal H (or nothing if N <= 0).
 """
-function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWorkspace)
+function assemble_static_hamiltonian!(L::Float64, h::Float64, V::Function, ws::SolverWorkspace)
     N = round(Int, L / h) - 1              # number of interior points
     # Early-outs and validation.
     # - If N <= 0, the domain has no interior points at this resolution.
@@ -207,9 +177,9 @@ function assemble_hamiltonian!(L::Float64, h::Float64, q::Float64, ws::SolverWor
         end
     end
 
-    # Add diagonal potential term V(xi) = -sech(q * xi)^2.
+    # Add diagonal potential term V(xi).
     @inbounds @simd for i in 1:N
-        diag[i] += -1.0 / cosh(xi[i] * q)^2
+        diag[i] += V(xi[i])
     end
 
     # Return the assembled symmetric tridiagonal matrix.
@@ -219,7 +189,7 @@ end
 # -- Solver Interface --
 
 """
-    solve_schrodinger(L, h, q, ws) -> (eigenvalues, eigenvectors, xi)
+    solve_static_schrodinger(L, h, V, ws) -> (eigenvalues, eigenvectors, xi)
 
 Build the Hamiltonian on a uniform grid with spacing h over (-L/2, L/2),
 apply Dirichlet BCs (interior points only), and compute its full eigendecomposition.
@@ -232,8 +202,8 @@ Returns:
 - eigenvectors::Matrix{Float64} (columns are eigenvectors on interior grid)
 - xi::Vector{Float64} interior grid coordinates (copied out from workspace)
 """
-function solve_schrodinger(L::Float64, h::Float64, q::Float64, ws::SolverWorkspace)
-    N, H = assemble_hamiltonian!(L, h, q, ws)
+function solve_static_schrodinger(L::Float64, h::Float64, V::Function, ws::SolverWorkspace)
+    N, H = assemble_static_hamiltonian!(L, h, V, ws)
     if N == 0
         return [Inf], nothing, Float64[]
     end
@@ -243,28 +213,28 @@ function solve_schrodinger(L::Float64, h::Float64, q::Float64, ws::SolverWorkspa
 end
 
 """
-    solve_schrodinger(L, h, q) -> (eigenvalues, eigenvectors, xi)
+    solve_static_schrodinger(L, h, V) -> (eigenvalues, eigenvectors, xi)
 
 Convenience overload that allocates a temporary [`SolverWorkspace`](@ref) sized for this grid
 and delegates to the workspace-based method.
 """
-function solve_schrodinger(L::Float64, h::Float64, q::Float64)
+function solve_static_schrodinger(L::Float64, h::Float64, V::Function)
     N = round(Int, L / h) - 1
     if N <= 0
         return [Inf], nothing, Float64[]
     end
     ws = SolverWorkspace(N)
-    return solve_schrodinger(L, h, q, ws)
+    return solve_static_schrodinger(L, h, V, ws)
 end
 
 """
-    solve_schrodinger(N, L, q)
+    solve_static_schrodinger(N, L, V)
 
 Convenience overload: compute h = L/(N+1) for N interior points, then call the main solver.
 """
-function solve_schrodinger(N::Int, L::Float64, q::Float64)
+function solve_static_schrodinger(N::Int, L::Float64, V::Function)
     h = L / (N + 1)
-    return solve_schrodinger(L, h, q)
+    return solve_static_schrodinger(L, h, V)
 end
 
 
@@ -302,6 +272,7 @@ dx = 0.01
 u = randn(1000)
 un = normalise_L2(u, dx)
 @assert isapprox(dx * sum(abs2, un), 1.0; rtol=1e-12)
+
 ```
 """
 function normalise_L2(v::AbstractVector{T}, dx::Real; atol::Real=1e-14) where {T<:Number}

@@ -5,11 +5,13 @@ include("../SolutionFunctions.jl")
 P = 50.0 # Our dimensionless parameter
 N = 1000  # number of interior points
 # DOMAIN SIZE HAS TO BE ADJUSTED BASED ON P
-L = 10.0*1/(q_of_p(P))  # domain size
+q = q_of_p(P)
+L = 10.0*1/q  # domain size
 println("Using domain size L = $L for P = $P")
 
 # Solve the Schrodinger equation numerically
-E, psi, xi = @time solve_schrodinger(N, L, q_of_p(P))
+V(x) = -sech(q*x)^2
+E, psi, xi = @time solve_static_schrodinger(N, L, V)
 
 # Ensure x-array and eigenvector lengths match (floating-point rounding can make N differ by one)
 nrows = size(psi, 1)

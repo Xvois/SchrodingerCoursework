@@ -24,7 +24,8 @@ for P in P_values
     L = L_fixed  # Use fixed L for all P values
     
     # Solve numerically
-    E, psi, xi = solve_schrodinger(N, L, q)
+    V(x) = -sech(q*x)^2
+    E, psi, xi = solve_static_schrodinger(N, L, V)
     
     # Get analytical energies
     E_analytical = analytical_energy_levels(P)
