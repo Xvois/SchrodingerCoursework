@@ -10,7 +10,7 @@ end
 P = 50.0                 # Choose p so that there are at least three bound states
 N = 400                  # number of interior grid points
 q = q_of_p(P)
-L = 20.0 / q             # domain size
+L = 10.0 / q             # domain size
 
 println("Solving static problem for P=$P...")
 V_static(x) = -sech(q*x)^2

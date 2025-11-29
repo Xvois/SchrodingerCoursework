@@ -4,6 +4,7 @@
 # - Views (@view) take slices without allocating new arrays.
 
 using LinearAlgebra
+using FFTW
 
 # -- Helper Functions --
 
@@ -223,30 +224,6 @@ function solve_static_schrodinger(N::Int, L::Float64, V::Function)
 end
 
 """
-    evolve_coeffs!(c0, E, dt)
-Evolves the coefficients `c0` in the eigenbasis over time dt given eigenvalues E from
-a *time-independent Hamiltonian H*.
-
-# Example:
-```jldoctest
-julia> c = complex.([1.0, 0.0, 0.0])
-E = [-1.0, 0.0, 1.0] # assumed to be eigenvalues from a time-independent Hamiltonian H #
-dt = pi/2
-julia> evolve_coeffs!(c, E, dt);
-julia> c
-3-element Vector{ComplexF64}:
- 0.0 + 1.0im
- 0.0 + 0.0im
- 0.0 - 1.0im
-```
-"""
-function evolve_coeffs!(c0::Vector{ComplexF64}, E::Vector{Float64}, dt::Float64)
-    @inbounds @simd for i in 1:length(c0)
-        c0[i] *= exp(-im * E[i] * dt)
-    end
-end
-
-"""
     evolve_dynamic_coeffs!(psi, L, h, Vxt, dt; nsteps=1, ws, basis=nothing, store=true)
 
 Crank-Nicolson time stepper for a state vector `psi` on the interior grid of length L with spacing h.
@@ -266,55 +243,64 @@ Returns:
 function evolve_dynamic_coeffs!(psi::Vector{ComplexF64},
                                 L::Float64, h::Float64,
                                 Vxt::Function,
-                                dt::Float64;
+                                dt::Float64,
+                                t_start::Float64=0.0; # Added t_start
                                 nsteps::Int=1,
                                 ws::SolverWorkspace,
                                 basis::Union{Nothing,AbstractMatrix{<:Number}}=nothing,
                                 store::Bool=true)
 
     N_expected = round(Int, L / h) - 1
-    length(psi) == N_expected || throw(ArgumentError("psi length does not match grid interior points"))
+    length(psi) == N_expected || throw(ArgumentError("psi length mismatch"))
 
-    # Prepare coefficient storage if requested
+    # Prepare storage
     coeffs = nothing
     if basis !== nothing && store
-        ncols = size(basis, 2)
+        # Pre-calculate initial state projection before evolution starts
         coeffs = Vector{ComplexF64}[]
-        push!(coeffs, project_onto_basis_L2(psi, basis, h))
+        push!(coeffs, project_onto_basis_L2(psi, basis, h)) 
     end
 
-    t = 0.0
+    t = t_start
+    
     for step in 1:nsteps
-        # assemble H(t) as SymTridiagonal using V(xi,t)
-        V_here = x -> Vxt(x, t)
+        t_mid = t + dt/2
+        
+        # Assemble H at the midpoint time
+        V_here = x -> Vxt(x, t_mid)
         N, H = assemble_static_hamiltonian!(L, h, V_here, ws)
-        if N == 0
-            return psi, coeffs
-        end
 
-        # Extract real diagonals and off-diagonals
-        diag_r = copy(H.d)                 # real diagonal
-        off_r = copy(H.e)                  # real off-diagonal (length N-1)
+        # Extract vectors
+        diag_r = H.dv
+        off_r = H.ev
 
-        # Build complex CN matrices: A = I + i dt/2 H, B = I - i dt/2 H
-        diagA = ComplexF64.(1.0 .+ im * (dt/2) .* diag_r)
-        diagB = ComplexF64.(1.0 .- im * (dt/2) .* diag_r)
-        offA = ComplexF64.(im * (dt/2) .* off_r)
-        offB = -offA
+        # Build CN operators
+        # Note: The signs here are correct for (I + iHdt/2)psi_new = (I - iHdt/2)psi_old
+        # factor = i * dt / 2
+        factor = im * (dt / 2.0)
+        
+        # Construct diagonals for A (LHS) and B (RHS)
+        # LHS: (1 + i dt/2 H)
+        diagA = ComplexF64.(1.0 .+ factor .* diag_r)
+        offA  = ComplexF64.(factor .* off_r)
+        
+        # RHS: (1 - i dt/2 H)
+        diagB = ComplexF64.(1.0 .- factor .* diag_r)
+        offB  = -offA # Simple negation for off-diagonals
 
         A = Tridiagonal(offA, diagA, offA)
         B = Tridiagonal(offB, diagB, offB)
 
-        # rhs = B * psi
+        # Step: Solve A * psi_new = B * psi_old
+        # B * psi is efficient for Tridiagonal
         rhs = B * psi
-
-        # solve A * psi_next = rhs using efficient tridiagonal solver
+        
+        # In-place update of psi using the backslash operator (efficient for Tridiagonal)
         psi .= A \ rhs
 
-        # advance time
+        # Advance full time step
         t += dt
 
-        # optional projection onto provided basis
         if basis !== nothing && store
             push!(coeffs, project_onto_basis_L2(psi, basis, h))
         end
@@ -382,4 +368,99 @@ function project_onto_basis_L2(psi::AbstractVector{T}, basis::AbstractMatrix{S},
     end
     return coeffs
 end
+
+
+"""
+    fftfreq(N, dt=1.0) -> freqs::Vector{Float64}
+
+Compute the FFT frequency bin centers (in Hz) for a discrete-time signal
+of length `N` with sampling spacing `dt` (in seconds). The returned vector
+has length `N` and is ordered to correspond to the output of `fft`.
+
+Examples
+```
+julia> fftfreq(4, 0.25)
+[0.0, 1.0, -2.0, -1.0]
+```
+"""
+function fftfreq(N::Int, dt::Real=1.0)
+    N >= 1 || throw(ArgumentError("N must be positive, got $(N)"))
+    dt > 0 || throw(ArgumentError("dt must be positive, got $(dt)"))
+    fs = 1.0 / dt
+    freqs = Vector{Float64}(undef, N)
+    @inbounds for k in 0:(N - 1)
+        if k <= N ÷ 2
+            freqs[k + 1] = (k * fs) / N
+        else
+            freqs[k + 1] = ((k - N) * fs) / N
+        end
+    end
+    return freqs
+end
+
+"""
+    discrete_fft(y, dt=1.0; norm=:amplitude, one_sided=true)
+
+Compute the discrete Fourier transform of a sampled signal `y` (vector)
+using `fft`. Returns a tuple `(freqs, spectrum)` where `freqs` are the
+FFT frequency bin centers in Hz and `spectrum` is the (optionally scaled)
+complex spectrum values. `norm` controls amplitude normalization (`:none`,
+`:amplitude`, or `:unitary`) and `one_sided` (default `true`) will return a
+one-sided spectrum for real-valued inputs that contains only non-negative
+frequencies (and scales the non-DC / non-Nyquist bins by 2 to conserve
+energy).
+
+Examples
+```
+dt = 0.01
+N = 256
+t = (0:(N - 1)) .* dt
+y = sin.(2π * 10.0 .* t)
+f, S = discrete_fft(y, dt; norm=:amplitude, one_sided=true)
+```
+"""
+function discrete_fft(y::AbstractVector{T}, dt::Real=1.0; norm::Symbol=:amplitude, one_sided::Bool=true) where {T<:Number}
+    length(y) >= 1 || throw(ArgumentError("y must be non-empty"))
+    dt > 0 || throw(ArgumentError("dt must be positive"))
+    N = length(y)
+
+    # raw FFT
+    Y = fft(ComplexF64.(y))
+    freqs = fftfreq(N, dt)
+
+    # Normalisation factor
+    scale = nothing
+    if norm === :none
+        scale = 1.0
+    elseif norm === :amplitude
+        scale = 1.0 / N
+    elseif norm === :unitary
+        scale = 1.0 / sqrt(N)
+    else
+        throw(ArgumentError("norm must be one of :none, :amplitude, :unitary"))
+    end
+
+    if one_sided && eltype(y) <: Real
+        # One-sided for real signals: keep indices 1 .. floor(N/2)+1
+        if iseven(N)
+            kmax = N ÷ 2 + 1
+        else
+            kmax = (N + 1) ÷ 2
+        end
+        inds = 1:kmax
+        S = scale .* Y[inds]
+        # Double non-DC and non-Nyquist bins (power in negative freqs)
+        if kmax > 1
+            # start after DC (index 1), end before Nyquist if even length
+            n_fixed = (iseven(N) ? kmax - 2 : kmax - 1)
+            if n_fixed > 0
+                S[2:(1 + n_fixed)] .= 2.0 .* S[2:(1 + n_fixed)]
+            end
+        end
+        return freqs[inds], S
+    else
+        return freqs, scale .* Y
+    end
+end
+
 

@@ -4,7 +4,6 @@ include("../SolutionFunctions.jl")
 
 P = 50.0 # Our dimensionless parameter
 N = 1000  # number of interior points
-# DOMAIN SIZE HAS TO BE ADJUSTED BASED ON P
 q = q_of_p(P)
 L = 10.0*1/q  # domain size
 println("Using domain size L = $L for P = $P")
@@ -70,7 +69,7 @@ gap = 1.6 * maxamp                       # a bit more separation for clarity
 offsets = (0:nstates-1) .* gap
 colors = palette(:tab10)
 plt_offset = plot(; legend = false, dpi = 500, size = (720, 480),
-    xlabel = "xi", ylabel = "state offsets",
+    xlabel = L"\\xi", ylabel = "state offsets",
     guidefont = font(16), tickfont = font(12))
 for i in 1:nstates
     # light baseline at each offset with state label as y-tick
@@ -84,6 +83,6 @@ yticks!(plt_offset, yticks_vals, yticks_labs)
 annot_x = xi[1] + 0.1 * (xi[end] - xi[1])
 for i in 1:nstates
     annotate!(annot_x, offsets[i] + 0.2 * gap,
-    text("E=$(round(E[i], digits = 3))", 16, :black))
+    text("E_$(i-1)=$(round(E[i], digits = 3))", 16, :black))
 end
 savefig(plt_offset, "./Q2/Plots/PlotStates_offset_P$(Int(P))_N$(N)_clear.png")
