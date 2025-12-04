@@ -1,6 +1,7 @@
 using Base.Threads
 using Plots
 using LinearAlgebra
+using LaTeXStrings
 
 include("../SolutionFunctions.jl")
 
@@ -14,7 +15,7 @@ q = q_of_p(P)
 
 # Fix L to be large enough so boundary error is negligible
 # From previous analysis, Lq > 15 is usually safe.
-L = 20.0 / q 
+L = 10.0 / q 
 
 println("Analyzing discretization error for P=$P, L=$L")
 
@@ -80,18 +81,20 @@ end
 println("Plotting results...")
 
 plt = plot(
-    xlabel = "Log Number of Grid Points N",
-    ylabel = "Log Percent Error (%)",
-    title = "Discretization Error vs Grid Density (P=$P, L=$(round(L, digits=2)))",
+    xlabel = L"N",
+    ylabel = L"\mathrm{Energy\ Error\ (\%)}",
     xscale = :log10,
     yscale = :log10,
     legend = :bottomleft,
-    dpi = 300
+    dpi = 300,
+    fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10
 )
+
+colors = palette(:viridis, levels_to_plot)
 
 for level in 1:levels_to_plot
     n = level - 1
-    plot!(plt, N_values, E_errors[level, :], label="n=$n", lw=2, marker=:circle, ms=3)
+    plot!(plt, N_values, E_errors[level, :], label="n=$n", lw=2, marker=:circle, ms=1.5, color=colors[level])
 end
 
 # Add a reference line for O(1/N^2) or O(h^2)
@@ -99,7 +102,13 @@ end
 # Log-log slope should be -2
 ref_x = N_values
 ref_y = 1e4 .* (1.0 ./ ref_x).^2
-plot!(plt, ref_x, ref_y, label="O(1/N^2)", ls=:dash, color=:black)
+plot!(plt, ref_x, ref_y, label=L"O(1/N^2)", ls=:dash, lw=3.5, color=:black)
 
-savefig(plt, "Q2/Plots/Error_vs_StepSize.png")
-println("Done. Plot saved to Q2/Plots/Error_vs_StepSize.png")
+# Add an annotation near the right-hand side so the reference line is obvious
+idx_annot = clamp(round(Int, 0.75 * length(ref_x)), 1, length(ref_x))
+x_annot = ref_x[idx_annot]
+y_annot = ref_y[idx_annot]
+annotate!(plt, x_annot, y_annot * 1.25, text(L"O(1/N^2)", 10, :black, "Computer Modern"))
+
+savefig(plt, "Q2/Plots/Error_vs_StepSize_P$(round(Int, P))_L$(round(Int, L)).png")
+println("Done. Plot saved to Q2/Plots/Error_vs_StepSize_P$(round(Int, P))_L$(round(Int, L)).png")

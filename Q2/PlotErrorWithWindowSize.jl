@@ -80,6 +80,7 @@ E_errors = @time calculate_errors(L_values, h, V, E_analytical, workspaces)
 
 # Plot the error against window size L with shaded regions
 using Plots
+using LaTeXStrings
 
 highlight_n = 4
 highlight_level = highlight_n + 1
@@ -97,7 +98,7 @@ log_vals = similar(E_errors)
 @inbounds for level in axes(E_errors, 1)
     for idx in axes(E_errors, 2)
         val = E_errors[level, idx]
-        log_vals[level, idx] = (isfinite(val) && val > 0) ? log(val) : NaN
+        log_vals[level, idx] = (isfinite(val) && val > 0) ? log10(val) : NaN
     end
 end
 
@@ -119,7 +120,8 @@ else
 end
 
 # Prepare plot and draw shaded rectangles (use seriestype=:shape for compatibility)
-plt = plot(xlabel="Lq", ylabel="Log Percent Error", xlim=(minimum(Lq_values), maximum(Lq_values)), ylim=(ymin, ymax), dpi=500)
+plt = plot(xlabel=L"Lq", ylabel=L"\log_{10}(\mathrm{Error\ \%})", xlim=(minimum(Lq_values), maximum(Lq_values)), ylim=(ymin, ymax), dpi=500,
+           palette = :viridis, fontfamily="Computer Modern", guidefontsize=16, tickfontsize=12, legendfontsize=12)
 
 # Left rectangle (boundary-dominated)
 xs_left = [minimum(Lq_values), Lq_min, Lq_min, minimum(Lq_values)]
@@ -132,27 +134,21 @@ ys_right = [ymin, ymin, ymax, ymax]
 plot!(plt, xs_right, ys_right, seriestype = :shape, color = :lightgreen, alpha = 0.18, label = "Discretisation-dominated")
 
 # Draw the vertical marker at the minimum and then the error line on top
-## Highlighting: make n=4 highlighted and adjust opacity of others
+## Highlighting: Use viridis palette
 
 if levels_to_plot >= 1
+    # Get colors from viridis palette
+    # We want n=0 (dark) to n=4 (bright)
+    # levels_to_plot is usually 5 (n=0 to n=4)
+    colors = palette(:viridis, levels_to_plot)
+    
     for level in 1:levels_to_plot
         n = level - 1
-        if level == highlight_level
-            continue
-        end
-        # map n in 0..(highlight_n-1) to opacity range [0.2,0.8]
-        if n <= highlight_n - 1
-            denom = max(1, highlight_n - 1)
-            alpha = 0.2 + (n / denom) * 0.6
-        else
-            alpha = 0.2
-        end
-        color = RGBA(0.35, 0.35, 0.35, alpha)
-        plot!(plt, Lq_values, log_vals[level, :], lw = 1.6, color = color, label = "n = $(n)")
-    end
-    # now highlighted level in red on top (if it exists)
-    if highlight_level <= levels_to_plot
-        plot!(plt, Lq_values, log_vals[highlight_level, :], lw = 2.6, lc = :red, label = "n = $(highlight_n)")
+        
+        # Use the color from the palette
+        c = colors[level]
+        
+        plot!(plt, Lq_values, log_vals[level, :], lw = 2.0, color = c, label = "n = $(n)")
     end
 end
 

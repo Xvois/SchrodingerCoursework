@@ -3,11 +3,13 @@ include("../SolutionFunctions.jl")
 using Plots
 using Statistics
 using Printf
+using LaTeXStrings
 
 ## PARAMETERS
-N = 1000  # Fixed number of interior points
-L_fixed = 100.0  # Fixed domain size L
+h = 0.05  # Fixed spatial step size for all runs
+L_fixed = 500.0  # Fixed domain size L
 P_values = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]  # Multiple P values to test
+N = round(Int, L_fixed / h) - 1  # Number of grid points based on fixed L and h
 
 # Number of states to compare (will use minimum available across all P values)
 max_states = 10
@@ -23,9 +25,9 @@ for P in P_values
     q = q_of_p(P)
     L = L_fixed  # Use fixed L for all P values
     
-    # Solve numerically
+    # Solve numerically using fixed h
     V(x) = -sech(q*x)^2
-    E, psi, xi = solve_static_schrodinger(N, L, V)
+    E, psi, xi = solve_static_schrodinger(L, h, V)
     
     # Get analytical energies
     E_analytical = analytical_energy_levels(P)
@@ -56,18 +58,16 @@ println("\nGenerating plot...")
 
 # Create plot
 plt = plot(
-    xlabel = "State n", 
-    ylabel = "Absolute Percentage Error (%)",
-    title = "Energy Error vs State Number for Multiple P (N=$N, L=$L_fixed)",
+    xlabel = L"n", 
+    ylabel = L"\mathrm{Error\ (\%)}",
     legend = :topleft,
     dpi = 500,
     yscale = :log10,
-    guidefont = font(14),
-    tickfont = font(11)
+    fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10
 )
 
 # Plot error vs state number for each P
-colors = palette(:tab10)
+colors = palette(:viridis, length(P_values))
 for (idx, P) in enumerate(P_values)
     errors = results[P]
     n_values = 0:(length(errors)-1)  # State indices starting from 0
@@ -87,9 +87,9 @@ for (idx, P) in enumerate(P_values)
     end
 end
 
+savefig(plt, "./Q2/Plots/ErrorVsState_MultipleP_h$(h)_L$(Int(L_fixed)).png")
 # Save plot
-savefig(plt, "./Q2/Plots/ErrorVsState_MultipleP_N$(N)_L$(Int(L_fixed)).png")
-println("Plot saved to ./Q2/Plots/ErrorVsState_MultipleP_N$(N)_L$(Int(L_fixed)).png")
+println("Plot saved to ./Q2/Plots/ErrorVsState_MultipleP_h$(h)_L$(Int(L_fixed)).png")
 
 # Print summary table
 println("\nSummary of percentage errors by state:")

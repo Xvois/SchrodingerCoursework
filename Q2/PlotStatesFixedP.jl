@@ -1,16 +1,18 @@
 include("../SolutionFunctions.jl")
+using LaTeXStrings
 
 ## ALL PARAMETERS TO BE SET HERE
 
 P = 50.0 # Our dimensionless parameter
-N = 1000  # number of interior points
+h = 0.05  # desired spatial step size
 q = q_of_p(P)
-L = 10.0*1/q  # domain size
-println("Using domain size L = $L for P = $P")
+L = 10.0 * 1/q  # domain size
+N = round(Int, L / h) - 1
+println("Using domain size L = $L for P = $P (h=$h, N=$N)")
 
 # Solve the Schrodinger equation numerically
 V(x) = -sech(q*x)^2
-E, psi, xi = @time solve_static_schrodinger(N, L, V)
+E, psi, xi = @time solve_static_schrodinger(L, h, V)
 
 # Ensure x-array and eigenvector lengths match (floating-point rounding can make N differ by one)
 nrows = size(psi, 1)
@@ -44,22 +46,26 @@ println("Lowest 5 energy eigenvalues:")
 println("Analytical: ", E_analytical)
 println("Numerical:  ", E[1:5])
 # Plot the lowest energy eigenfunctions with thicker lines and distinct styles
-styles = [:solid, :dash, :dot, :dashdot, :dashdotdot]
-plt = plot(
-    xi, psi[:, 1];
-    label = "n=0", xlabel = "xi", ylabel = "psi(xi)",
-    legend = :topright, dpi = 500,
-    lw = 3, linestyle = styles[1],
-    guidefont = font(16), tickfont = font(12)
-)
-# Plot next few eigenfunctions with different line styles
-for (i, n) in enumerate(2:5)
-    plot!(
-        xi, psi[:, n];
-        label = "n=$(n-1)", lw = 3, linestyle = styles[i + 1]
+if false
+    styles = [:solid, :dash, :dot, :dashdot, :dashdotdot]
+    plt = plot(
+        xi, psi[:, 1];
+        label = "n=0", xlabel = L"\\xi", ylabel = L"\\psi(\\xi)",
+        legend = :topright, dpi = 500,
+        lw = 3, linestyle = styles[1],
+        # Avoid specifying a font that may require LaTeX backend support; use default fonts
+        guidefontsize=12, tickfontsize=10
     )
+    # Plot next few eigenfunctions with different line styles
+    for (i, n) in enumerate(2:5)
+        plot!(
+            xi, psi[:, n];
+            label = "n=$(n-1)", lw = 3, linestyle = styles[i + 1]
+        )
+    end
+    savefig(plt, "./Q2/Plots/PlotStates_P$(Int(P))_h$(h)_N$(N).png")
 end
-savefig(plt, "./Q2/Plots/PlotStates_P$(Int(P))_N$(N).png")
+
 
 
 nstates = min(5, size(psi, 2))
@@ -67,10 +73,11 @@ nstates = min(5, size(psi, 2))
 maxamp = maximum(abs, psi[:, 1:nstates])
 gap = 1.6 * maxamp                       # a bit more separation for clarity
 offsets = (0:nstates-1) .* gap
-colors = palette(:tab10)
+colors = palette(:viridis, nstates)
 plt_offset = plot(; legend = false, dpi = 500, size = (720, 480),
     xlabel = L"\\xi", ylabel = "state offsets",
-    guidefont = font(16), tickfont = font(12))
+    # Avoid specifying a font that may require LaTeX backend support; use default fonts
+    guidefontsize=12, tickfontsize=10)
 for i in 1:nstates
     # light baseline at each offset with state label as y-tick
     hline!([offsets[i]]; c = :gray, alpha = 0.35, lw = 1, label = "")
@@ -83,6 +90,6 @@ yticks!(plt_offset, yticks_vals, yticks_labs)
 annot_x = xi[1] + 0.1 * (xi[end] - xi[1])
 for i in 1:nstates
     annotate!(annot_x, offsets[i] + 0.2 * gap,
-    text("E_$(i-1)=$(round(E[i], digits = 3))", 16, :black))
+    text("E_$(i-1)=$(round(E[i], digits = 3))", 10, :black))
 end
-savefig(plt_offset, "./Q2/Plots/PlotStates_offset_P$(Int(P))_N$(N)_clear.png")
+savefig(plt_offset, "./Q2/Plots/PlotStates_offset_P$(Int(P))_h$(h)_N$(N)_clear.png")
