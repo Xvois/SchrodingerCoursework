@@ -2,7 +2,7 @@ using Base.Threads
 
 include("../SolutionFunctions.jl")
 
-P = 50.0 # Our dimensionless parameter
+P = 30.0 # Our dimensionless parameter
 h = 0.05 # step size
 
 q = q_of_p(P)
@@ -121,7 +121,7 @@ end
 
 # Prepare plot and draw shaded rectangles (use seriestype=:shape for compatibility)
 plt = plot(xlabel=L"Lq", ylabel=L"\log_{10}(\mathrm{Error\ \%})", xlim=(minimum(Lq_values), maximum(Lq_values)), ylim=(ymin, ymax), dpi=500,
-           palette = :viridis, fontfamily="Computer Modern", guidefontsize=16, tickfontsize=12, legendfontsize=12)
+           palette = :viridis, fontfamily="Computer Modern", guidefontsize=16, tickfontsize=12, legendfontsize=10, size = (540, 360))
 
 # Left rectangle (boundary-dominated)
 xs_left = [minimum(Lq_values), Lq_min, Lq_min, minimum(Lq_values)]

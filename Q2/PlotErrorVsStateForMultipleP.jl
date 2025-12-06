@@ -8,7 +8,7 @@ using LaTeXStrings
 ## PARAMETERS
 h = 0.05  # Fixed spatial step size for all runs
 L_fixed = 500.0  # Fixed domain size L
-P_values = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]  # Multiple P values to test
+const P_values = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]  # Multiple P values to test
 N = round(Int, L_fixed / h) - 1  # Number of grid points based on fixed L and h
 
 # Number of states to compare (will use minimum available across all P values)
@@ -56,40 +56,58 @@ end
 
 println("\nGenerating plot...")
 
-# Create plot
+# Create plot (scatter-only, jittered x to avoid overlap, improved styling)
+max_n = maximum(length(results[P]) for P in P_values) - 1
+colors = palette(:viridis, length(P_values))
+markers = [:circle, :square, :diamond, :utriangle, :dtriangle, :hexagon]
+
 plt = plot(
-    xlabel = L"n", 
+    xlabel = L"n",
     ylabel = L"\mathrm{Error\ (\%)}",
-    legend = :topleft,
+    legend = :bottomright,
+    legendfontsize = 12,
+    legend_background_color_alpha = 0.0,
     dpi = 500,
     yscale = :log10,
-    fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10
+    fontfamily = "Computer Modern",
+    guidefontsize = 16,
+    tickfontsize = 12,
+    size = (540, 360),
+    ygrid = true,
+    xgrid = false,
+    xticks = 0:1:max_n
 )
 
-# Plot error vs state number for each P
-colors = palette(:viridis, length(P_values))
+# Plot error vs state number for each P (scatter series, no connecting lines)
 for (idx, P) in enumerate(P_values)
     errors = results[P]
     n_values = 0:(length(errors)-1)  # State indices starting from 0
-    
+
     # Filter out NaN/Inf values for plotting
     valid_indices = findall(isfinite, errors)
     if !isempty(valid_indices)
-        plot!(plt, n_values[valid_indices], abs.(errors[valid_indices]);
+        x = n_values[valid_indices]
+        y = abs.(errors[valid_indices])
+        plot!(plt, x, y;
+            seriestype = :scatter,
             label = "P=$(Int(P))",
-            lw = 2,
-            marker = :circle,
-            markersize = 4,
-            color = colors[idx]
+            markersize = 6,
+            marker = markers[idx],
+            color = colors[idx],
+            markerstrokecolor = :black,
+            markerstrokewidth = 0.4,
+            alpha = 0.95
         )
     else
         @warn "No valid errors to plot for P=$P"
     end
 end
 
-savefig(plt, "./Q2/Plots/ErrorVsState_MultipleP_h$(h)_L$(Int(L_fixed)).png")
-# Save plot
-println("Plot saved to ./Q2/Plots/ErrorVsState_MultipleP_h$(h)_L$(Int(L_fixed)).png")
+# Ensure target directory exists, then save
+mkpath("./Q2/Plots")
+outfile = "./Q2/Plots/ErrorVsState_MultipleP_h$(h)_L$(Int(L_fixed)).png"
+savefig(plt, outfile)
+println("Plot saved to $outfile")
 
 # Print summary table
 println("\nSummary of percentage errors by state:")

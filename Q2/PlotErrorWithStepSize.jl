@@ -10,12 +10,12 @@ if !isdir("Q2/Plots")
     mkpath("Q2/Plots")
 end
 
-P = 50.0
+P = 30.0
 q = q_of_p(P)
 
 # Fix L to be large enough so boundary error is negligible
 # From previous analysis, Lq > 15 is usually safe.
-L = 10.0 / q 
+L = 15.0 / q 
 
 println("Analyzing discretization error for P=$P, L=$L")
 
@@ -86,8 +86,12 @@ plt = plot(
     xscale = :log10,
     yscale = :log10,
     legend = :bottomleft,
-    dpi = 300,
-    fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10
+    dpi = 500,
+    fontfamily = "Computer Modern",
+    guidefontsize = 16,
+    tickfontsize = 12,
+    legendfontsize = 12,
+    size = (540, 360)
 )
 
 colors = palette(:viridis, levels_to_plot)

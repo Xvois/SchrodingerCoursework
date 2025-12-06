@@ -3,10 +3,10 @@ using Plots
 using LaTeXStrings
 
 # Parameters
-P = 50.0                 # Choose p so that there are at least three bound states
+P = 30.0                 # Choose p so that there are at least three bound states
 h = 0.05                 # spatial step size
 q = q_of_p(P)
-L = 10.0 / q             # domain size
+L = 15.0 / q             # domain size
 N = round(Int, L / h) - 1
 eta = 0.1             # perturbation amplitude
 

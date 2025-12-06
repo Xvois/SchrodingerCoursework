@@ -8,11 +8,10 @@ if !isdir("Q3/Plots")
     mkpath("Q3/Plots")
 end
 
-P = 50.0                 # Choose p so that there are at least three bound states
-P = 50.0                 # Choose p so that there are at least three bound states
+P = 30.0                 # Choose p so that there are at least three bound states
 h = 0.05                 # spatial step size
 q = q_of_p(P)
-L = 10.0 / q             # domain size
+L = 15.0 / q             # domain size
 N = round(Int, L / h) - 1
 
 println("Solving static problem for P=$P (h=$h, N=$N)...")
@@ -62,41 +61,68 @@ c0_series = [coeffs[1] for coeffs in coeffs_history]
 # Plot vs t / T0 (main time-series)
 t_scaled = times ./ T0
 
-# Main time-series plot
-p_main = plot(t_scaled, real.(c0_series), label=L"Re(c_0)", xlabel=L"t / T_0", ylabel=L"c_0(t)",
-           lw=2, dpi=300, fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)
-plot!(p_main, t_scaled, imag.(c0_series), label=L"Im(c_0)", lw=2, ls=:dash)
-
-# Prepare Argand inset bbox (bottom-right)
-# Compute scale for inset (unit circle or larger to fit trajectory)
-rmax = maximum(abs.(c0_series))
-rplot = max(1.0, rmax)
+# Prepare Argand inset (unit circle to show |c0| = 1 is preserved)
 theta = range(0, 2pi, length=360)
-circlex = rplot .* cos.(theta)
-circley = rplot .* sin.(theta)
+unit_circlex = cos.(theta)
+unit_circley = sin.(theta)
 
-# Trajectory
+# Trajectory in complex plane
 xtraj = real.(c0_series)
 ytraj = imag.(c0_series)
 
-# Inset placement (bottom-right inside main axes)
-inset_bbox = bbox(0.62, 0.06, 0.34, 0.34, :bottom, :right, :inner)
+# Create main plot (left subplot)
+p_main = plot(t_scaled, real.(c0_series), label=L"\mathrm{Re}(c_0)", xlabel=L"t / T_0", ylabel=L"c_0(t)",
+           lw=1.5, dpi=500, fontfamily="Computer Modern",
+           guidefontsize=16, tickfontsize=12, legendfontsize=12,
+           legend=:bottomleft)
+plot!(p_main, t_scaled, imag.(c0_series), label=L"\mathrm{Im}(c_0)", lw=1.5, ls=:dash)
 
-# Build Argand plot separately and insert as inset to avoid drawing on main axes
-p_arg = plot(circlex, circley, linecolor=:lightgray, lw=1.2, legend=false,
-             xlabel="", ylabel="", aspect_ratio=:equal, framestyle=:box,
-             guidefontsize=8, tickfontsize=8, grid=false,
-             xlim=(-rplot-0.05, rplot+0.05), ylim=(-rplot-0.05, rplot+0.05))
-plot!(p_arg, xtraj, ytraj, linecolor=:blue, lw=1.2, legend=false)
-scatter!(p_arg, [xtraj[end]], [ytraj[end]], color=:red, markersize=4, label=false)
+# Prepare directional arrows evenly spaced around the unit circle
+# Place arrows at evenly spaced angles around the circle
+n_arrows = 10
+arrow_angles = range(0, 2pi, length=n_arrows+1)[1:end-1]  # evenly spaced angles
+arrow_x = Float64[]
+arrow_y = Float64[]
+arrow_dx = Float64[]
+arrow_dy = Float64[]
+arrow_scale = 0.08  # size of arrows
 
-# Add a few tick marks to inset axes for reference
-nticks = 5
-ticks_vals = collect(range(-rplot, rplot, length=nticks))
-plot!(p_arg, xticks=ticks_vals, yticks=ticks_vals)
+for angle in arrow_angles
+    # Position on unit circle
+    x_pos = cos(angle)
+    y_pos = sin(angle)
+    # Direction is tangent to circle (clockwise rotation, so negative angular direction)
+    # Tangent vector for clockwise motion: (sin(angle), -cos(angle))
+    dx = sin(angle) * arrow_scale
+    dy = -cos(angle) * arrow_scale
+    push!(arrow_x, x_pos)
+    push!(arrow_y, y_pos)
+    push!(arrow_dx, dx)
+    push!(arrow_dy, dy)
+end
 
-# Insert Argand as an inset in the bottom-right of the main plot
-plot!(p_main, p_arg, inset=(1, inset_bbox))
+# Create Argand diagram (right subplot) with matching style
+p_argand = plot(unit_circlex, unit_circley, 
+      linecolor=:gray, lw=1, ls=:dash, legend=false,
+      aspect_ratio=:equal, framestyle=:box,
+      fontfamily="Computer Modern", 
+      guidefontsize=16, tickfontsize=12,
+      xlabel=L"\mathrm{Re}(c_0)", ylabel=L"\mathrm{Im}(c_0)",
+      xlim=(-1.18, 1.18), ylim=(-1.18, 1.18),
+      xticks=[-1, 0, 1], yticks=[-1, 0, 1], titlefontsize=12)
 
-savefig(p_main, "Q3/Plots/c0_vs_tOverT0.png")
+# Plot the trajectory on the Argand diagram
+plot!(p_argand, xtraj, ytraj, lw=1.5, color=:blue)
+
+# Add directional arrows
+for i in 1:length(arrow_x)
+    quiver!(p_argand, [arrow_x[i]], [arrow_y[i]], quiver=([arrow_dx[i]], [arrow_dy[i]]),
+            color=:red, lw=1)
+end
+
+
+# Combine plots side by side with left plot larger
+p_combined = plot(p_main, p_argand, layout=grid(1, 2, widths=[0.7, 0.3]), size=(620, 350), dpi=500, margin=2Plots.mm)
+
+savefig(p_combined, "Q3/Plots/c0_vs_tOverT0.png")
 println("Done. Plot saved to Q3/Plots/c0_vs_tOverT0.png")
