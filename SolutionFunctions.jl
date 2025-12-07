@@ -64,6 +64,120 @@ function percent_error(analytical::T, numerical::T) where T<:AbstractFloat
     return abs((analytical - numerical) / analytical) * 100
 end
 
+
+"""
+    mean_value(data) -> Number
+
+Compute the arithmetic mean of the entries in `data`. Mirrors the basic
+functionality of `Statistics.mean` without requiring the external module.
+"""
+function mean_value(data::AbstractArray{T}) where {T<:Number}
+    n = length(data)
+    n > 0 || throw(ArgumentError("mean_value requires a non-empty collection"))
+    acc = zero(promote_type(T, Float64))
+    @inbounds for value in data
+        acc += value
+    end
+    return acc / n
+end
+
+"""
+    hann_window(N::Int) -> Vector{Float64}
+
+Return the length-N Hann window (also known as the Hanning window), matching the
+shape provided by `DSP.hann`/`hanning` without pulling in extra packages.
+"""
+function hann_window(N::Int)
+    N >= 1 || throw(ArgumentError("hann_window length must be positive"))
+    win = Vector{Float64}(undef, N)
+    if N == 1
+        win[1] = 1.0
+        return win
+    end
+    denom = N - 1
+    @inbounds for n in 0:(N - 1)
+        win[n + 1] = 0.5 * (1.0 - cos((2π * n) / denom))
+    end
+    return win
+end
+
+"""
+    moving_average(x, window) -> Vector
+
+Centered moving average with window length `window`. When the window extends
+beyond the data boundaries, it automatically truncates to the available range,
+matching the smoothing behaviour previously implemented ad-hoc in the scripts.
+"""
+function moving_average(x::AbstractVector{T}, window::Int) where {T<:Number}
+    window >= 1 || throw(ArgumentError("window must be at least 1"))
+    n = length(x)
+    out = Vector{promote_type(T, Float64)}(undef, n)
+    half = fld(window, 2)
+    @inbounds for i in 1:n
+        lo = max(1, i - half)
+        hi = min(n, i + half)
+        count = hi - lo + 1
+        acc = zero(promote_type(T, Float64))
+        for j in lo:hi
+            acc += x[j]
+        end
+        out[i] = acc / count
+    end
+    return out
+end
+
+const _math_label_replacements = (
+    raw"\\Omega" => "Ω",
+    raw"\\omega" => "ω",
+    raw"\\pi" => "π",
+    raw"\\xi" => "ξ",
+    raw"\\Delta" => "Δ",
+    raw"\\sum" => "Σ",
+    raw"\\log_{10}" => "log₁₀",
+    raw"\\mathrm{" => "",
+    raw"\\ " => " ",
+    raw"\\(" => "(",
+    raw"\\)" => ")",
+    raw"\\%" => "%",
+    raw"_0" => "0",
+    raw"_1" => "1",
+    raw"_2" => "2",
+    raw"_3" => "3",
+    raw"_4" => "4",
+    raw"_5" => "5",
+    raw"_6" => "6",
+    raw"_7" => "7",
+    raw"_8" => "8",
+    raw"_9" => "9",
+    raw"_n" => "n",
+)
+
+"""
+    math_label(expr::AbstractString) -> String
+
+Convert a light-weight LaTeX-like expression into a regular Unicode string so
+plots can keep expressive labels without `LaTeXStrings`.
+"""
+function math_label(expr::AbstractString)
+    text = replace(expr, "}" => "")
+    for (needle, replacement) in _math_label_replacements
+        text = replace(text, needle => replacement)
+    end
+    return text
+end
+
+"""
+    format_percentage(value; digits=4, pad=0) -> String
+
+Format a percentage value with a configurable number of decimal digits and
+optional left padding for tabular displays.
+"""
+function format_percentage(value::Real; digits::Int=4, pad::Int=0)
+    rounded = isfinite(value) ? round(value; digits=digits) : value
+    text = string(rounded, "%")
+    return pad > 0 ? lpad(text, pad) : text
+end
+
 # -- Analytical Solutions --
 
 """

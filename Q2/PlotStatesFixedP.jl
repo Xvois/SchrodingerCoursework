@@ -1,5 +1,5 @@
 include("../SolutionFunctions.jl")
-using LaTeXStrings
+using Plots
 
 ## ALL PARAMETERS TO BE SET HERE
 
@@ -32,15 +32,11 @@ end
 # Solve analytically
 E_analytical = analytical_energy_levels(P)
 
-using Statistics
-
 # Compute and print the average percentage error for the first 5 states
 ncomp = min(5, length(E), length(E_analytical))
 percent_errors = [percent_error(E_analytical[i], E[i]) for i in 1:ncomp]
-avg_percent_error = mean(percent_errors)
+avg_percent_error = mean_value(percent_errors)
 println("Average percentage error across first $ncomp states: $(round(avg_percent_error, digits=4))%")
-
-using Plots
 
 println("Lowest 5 energy eigenvalues:")
 println("Analytical: ", E_analytical)
@@ -54,7 +50,7 @@ gap = 1.6 * maxamp
 offsets = (0:nstates-1) .* gap
 colors = palette(:viridis, nstates)
 plt_offset = plot(; legend = false, dpi = 500, size = (540, 360),
-    xlabel = L"\xi",
+    xlabel = math_label("\\xi"),
     fontfamily = "Computer Modern",
     guidefontsize = 16,
     tickfontsize = 12)

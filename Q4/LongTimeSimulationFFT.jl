@@ -1,7 +1,5 @@
 include("../SolutionFunctions.jl")
 using Plots
-using Statistics
-using LaTeXStrings
 
 # Parameters
 P = 30.0                 # Choose p so that there are at least three bound states
@@ -10,11 +8,6 @@ q = q_of_p(P)
 L = 15.0 / q             # domain size
 N = round(Int, L / h) - 1
 eta = 0.1             # perturbation amplitude (increased to see Rabi oscillations)
-
-# Hanning window function
-function hanning_window(N)
-    return 0.5 .* (1.0 .- cos.(2π .* (0:N-1) ./ (N-1)))
-end
 
 # Step A: Solve the TISE to get eigenstates and eigenvalues
 println("Step A: Solving TISE for static potential...")
@@ -78,7 +71,7 @@ times = range(0, T_final, length=nsteps+1)
 t_scaled = times .* Omega ./ (2 * pi)
 
 # Apply Hanning window and compute FFTs for coefficients
-win = hanning_window(length(coeffs_matrix[1, :]))
+win = hann_window(length(coeffs_matrix[1, :]))
 coeffs_0_windowed = coeffs_matrix[1, :] .* win
 coeffs_2_windowed = coeffs_matrix[3, :] .* win
 
@@ -91,8 +84,8 @@ probs_0 = abs2.(coeffs_matrix[1, :])
 probs_2 = abs2.(coeffs_matrix[3, :])
 
 # Subtract mean to remove DC component and see the oscillation peak
-probs_0_ac = probs_0 .- mean(probs_0)
-probs_2_ac = probs_2 .- mean(probs_2)
+probs_0_ac = probs_0 .- mean_value(probs_0)
+probs_2_ac = probs_2 .- mean_value(probs_2)
 
 # Apply window to probabilities too
 probs_0_ac_win = probs_0_ac .* win
@@ -155,7 +148,7 @@ observed_splitting_0 = abs(top_peaks_0[1] - top_peaks_0[2])
 println("Observed Splitting (n=0): $observed_splitting_0")
 println("Theoretical Splitting: $f_Rabi")
 
-p1 = plot(f_pad, abs.(S_pad0), xlabel="Frequency", ylabel=L"|FFT|",
+p1 = plot(f_pad, abs.(S_pad0), xlabel="Frequency", ylabel=math_label("|FFT|"),
           xlim=(f0_center - span, f0_center + span), legend=false, lw=2,
           titlefont=font(22, "Computer Modern"), guidefont=font(16), tickfont=font(12), fontfamily="Computer Modern",
           size=(620, 350), dpi=500, margin=6Plots.mm)
@@ -165,7 +158,7 @@ vline!(p1, top_peaks_0, ls=:dot, c=:red, label="Observed")
 # Annotate splitting with Delta f label
 y_arrow = maximum(S_window_0) * 0.8
 plot!(p1, [top_peaks_0[1], top_peaks_0[2]], [y_arrow, y_arrow], arrow=:both, color=:black, lw=1.5)
-annotate!(p1, (top_peaks_0[1] + top_peaks_0[2])/2, y_arrow * 1.15, text(L"\Delta f", 14, :bottom))
+annotate!(p1, (top_peaks_0[1] + top_peaks_0[2])/2, y_arrow * 1.15, text(math_label("\\Delta f"), 14, :bottom))
 
 # Save with consistent figure sizing
 savefig(p1, "Q4/fft_splitting_zoom.png")

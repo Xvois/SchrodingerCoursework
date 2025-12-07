@@ -1,9 +1,6 @@
 include("../SolutionFunctions.jl")
 
 using Plots
-using Statistics
-using Printf
-using LaTeXStrings
 
 ## PARAMETERS
 h = 0.05  # Fixed spatial step size for all runs
@@ -50,7 +47,7 @@ for P in P_values
     results[P] = percent_errors
     
     valid_errors = filter(isfinite, percent_errors)
-    avg_err = isempty(valid_errors) ? NaN : mean(abs.(valid_errors))
+    avg_err = isempty(valid_errors) ? NaN : mean_value(abs.(valid_errors))
     println("  Computed $ncomp states, avg error = $(round(avg_err, digits=4))%")
 end
 
@@ -62,8 +59,8 @@ colors = palette(:viridis, length(P_values))
 markers = [:circle, :square, :diamond, :utriangle, :dtriangle, :hexagon]
 
 plt = plot(
-    xlabel = L"n",
-    ylabel = L"\mathrm{Error\ (\%)}",
+    xlabel = math_label("n"),
+    ylabel = math_label("\\mathrm{Error\\ (\\%)}"),
     legend = :bottomright,
     legendfontsize = 12,
     legend_background_color_alpha = 0.0,
@@ -127,7 +124,7 @@ for n in 0:(max_rows-1)
         if n < length(errors)
             err = errors[n+1]
             if isfinite(err)
-                @printf("%.4f%%   ", abs(err))
+                print(format_percentage(abs(err); digits=4, pad=9), "   ")
             else
                 print("N/A       ")
             end

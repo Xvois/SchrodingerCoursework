@@ -1,7 +1,5 @@
 include("../SolutionFunctions.jl")
 using Plots
-using LaTeXStrings
-using Printf
 
 # Parameters
 P = 30.0                 # Choose p so that there are at least three bound states
@@ -70,24 +68,6 @@ times = range(0, T_final, length=nsteps+1)
 t_scaled = times .* Omega ./ (2 * pi)
 
 # Plot magnitudes of first few states
-"""
-Produce a side-by-side figure: left = full-time traces (as before),
-right = a zoomed plot highlighting the micro-oscillation of the n=2 state.
-Improve font sizes and overall plot size for paper readability.
-"""
-
-function moving_average(x::AbstractVector{T}, window::Int) where T
-    n = length(x)
-    y = zeros(eltype(x), n)
-    half = fld(window, 2)
-    for i in 1:n
-        lo = max(1, i - half)
-        hi = min(n, i + half)
-        y[i] = sum(x[lo:hi]) / (hi - lo + 1)
-    end
-    return y
-end
-
 # Compute smoothed envelope and micro-oscillation for n=2 (index 3)
 idx_n2 = 3
 smoothed_n2 = moving_average(magnitudes[idx_n2, :], 21)
@@ -102,7 +82,7 @@ zoom_end = zoom_start + zoom_width
 idx_zoom = findall(t -> (t >= zoom_start) && (t <= zoom_end), t_scaled)
 
 pl_left = plot(t_scaled, magnitudes[1, :], label="n=0 (ground)", lw=2,
-    xlabel=L"t\Omega/(2\pi)", ylabel=L"|c_n|", guidefont=font(16), tickfont=font(12),
+    xlabel=math_label("t\\Omega/(2\\pi)"), ylabel=math_label("|c_n|"), guidefont=font(16), tickfont=font(12),
     legend=:left, legendfontsize=12)
 plot!(pl_left, t_scaled, magnitudes[2, :], label="n=1", lw=2)
 plot!(pl_left, t_scaled, magnitudes[3, :], label="n=2 (resonant)", lw=2, color=:green)
@@ -118,8 +98,8 @@ println("Saved Q4/state_magnitudes.png")
 
 # Check total probability conservation (sum of squared magnitudes)
 total_prob = sum(abs2.(coeffs_matrix), dims=1)[:]
-plt_prob = plot(t_scaled, total_prob, label=L"\sum |c_n|^2", lw=1.5, 
-    xlabel=L"t\Omega/(2\pi)", ylabel="Total Probability", 
+plt_prob = plot(t_scaled, total_prob, label=math_label("\\sum |c_n|^2"), lw=1.5, 
+    xlabel=math_label("t\\Omega/(2\\pi)"), ylabel="Total Probability", 
      title="Probability Conservation Check", dpi=300,
      fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)
 hline!(plt_prob, [1.0], ls=:dash, color=:red, label="Expected")

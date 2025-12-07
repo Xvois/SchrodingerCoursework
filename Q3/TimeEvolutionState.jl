@@ -1,7 +1,5 @@
 include("../SolutionFunctions.jl")
 using Plots
-using LinearAlgebra
-using LaTeXStrings
 
 # Ensure output directory exists
 if !isdir("Q3/Plots")
@@ -71,11 +69,11 @@ xtraj = real.(c0_series)
 ytraj = imag.(c0_series)
 
 # Create main plot (left subplot)
-p_main = plot(t_scaled, real.(c0_series), label=L"\mathrm{Re}(c_0)", xlabel=L"t / T_0", ylabel=L"c_0(t)",
+p_main = plot(t_scaled, real.(c0_series), label=math_label("\\mathrm{Re}(c_0)"), xlabel=math_label("t / T_0"), ylabel=math_label("c_0(t)"),
            lw=1.5, dpi=500, fontfamily="Computer Modern",
            guidefontsize=16, tickfontsize=12, legendfontsize=12,
            legend=:bottomleft)
-plot!(p_main, t_scaled, imag.(c0_series), label=L"\mathrm{Im}(c_0)", lw=1.5, ls=:dash)
+plot!(p_main, t_scaled, imag.(c0_series), label=math_label("\\mathrm{Im}(c_0)"), lw=1.5, ls=:dash)
 
 # Prepare directional arrows evenly spaced around the unit circle
 # Place arrows at evenly spaced angles around the circle
@@ -107,7 +105,7 @@ p_argand = plot(unit_circlex, unit_circley,
       aspect_ratio=:equal, framestyle=:box,
       fontfamily="Computer Modern", 
       guidefontsize=16, tickfontsize=12,
-      xlabel=L"\mathrm{Re}(c_0)", ylabel=L"\mathrm{Im}(c_0)",
+    xlabel=math_label("\\mathrm{Re}(c_0)"), ylabel=math_label("\\mathrm{Im}(c_0)"),
       xlim=(-1.18, 1.18), ylim=(-1.18, 1.18),
       xticks=[-1, 0, 1], yticks=[-1, 0, 1], titlefontsize=12)
 

@@ -1,6 +1,5 @@
-using Base.Threads
-
 include("../SolutionFunctions.jl")
+using Plots
 
 P = 30.0 # Our dimensionless parameter
 h = 0.05 # step size
@@ -14,21 +13,11 @@ E_analytical = E_analytical_full[1:levels_to_plot]
 L_values = range(0.1 * 1 / q, stop=20 * 1 / q, length=500)
 Lq_values = L_values .* q
 
-nthreads_running = nthreads()
-if nthreads_running == 1
-    println("Running with 1 thread. To use multiple threads set JULIA_NUM_THREADS before starting Julia, e.g.:")
-    println("  JULIA_NUM_THREADS=4 julia PlotErrorWithWindowSize.jl")
-    println("or use the -t flag:")
-    println("  julia -t 4 PlotErrorWithWindowSize.jl")
-else
-    println("Using $(nthreads_running) threads for computation.")
-end
-
 N_candidates = round.(Int, L_values ./ h) .- 1
 maxN = max(1, maximum(N_candidates))
-workspaces = [SolverWorkspace(maxN) for _ in 1:nthreads_running]
+workspace = SolverWorkspace(maxN)
 
-function calculate_single_errors!(dest::Vector{Float64}, L::Float64, V::Function, h::Float64, E_analytical::Vector{Float64}, ws::SolverWorkspace, _buffer::Vector{Float64})
+function calculate_single_errors!(dest::Vector{Float64}, L::Float64, V::Function, h::Float64, E_analytical::Vector{Float64}, ws::SolverWorkspace)
     # Assemble tridiagonal Hamiltonian reusing workspace (no large dense matrices)
     N, H = assemble_static_hamiltonian!(L, h, V, ws)
     if N == 0
@@ -46,41 +35,25 @@ function calculate_single_errors!(dest::Vector{Float64}, L::Float64, V::Function
     return dest
 end
 
-function calculate_errors(L_values::AbstractVector{Float64}, h::Float64, V::Function, E_analytical::Vector{Float64}, workspaces::Vector{SolverWorkspace})
+function calculate_errors(L_values::AbstractVector{Float64}, h::Float64, V::Function, E_analytical::Vector{Float64}, ws::SolverWorkspace)
     nL = length(L_values)
     nlevels = length(E_analytical)
     E_errors = Array{Float64}(undef, nlevels, nL)
-    next_index = Threads.Atomic{Int}(0)
-
-    Threads.@sync for ws in workspaces
-        Threads.@spawn begin
-            local_ws = ws
-            local_errors = Vector{Float64}(undef, nlevels)
-            energy_buffer = Vector{Float64}(undef, nlevels)
-            while true
-                idx = Threads.atomic_add!(next_index, 1) + 1
-                if idx > nL
-                    break
-                end
-                L = L_values[idx]
-                calculate_single_errors!(local_errors, L, V, h, E_analytical, local_ws, energy_buffer)
-                @inbounds @simd for level in 1:nlevels
-                    E_errors[level, idx] = local_errors[level]
-                end
-            end
+    local_errors = Vector{Float64}(undef, nlevels)
+    for (idx, L) in enumerate(L_values)
+        calculate_single_errors!(local_errors, L, V, h, E_analytical, ws)
+        @inbounds @simd for level in 1:nlevels
+            E_errors[level, idx] = local_errors[level]
         end
     end
-
-    println("Completed calculations for $(nL) window sizes (threads: $(nthreads())).")
+    println("Completed calculations for $(nL) window sizes.")
     return E_errors
 end
 
 V(x) = -sech(q*x)^2
-E_errors = @time calculate_errors(L_values, h, V, E_analytical, workspaces)
+E_errors = @time calculate_errors(L_values, h, V, E_analytical, workspace)
 
 # Plot the error against window size L with shaded regions
-using Plots
-using LaTeXStrings
 
 highlight_n = 4
 highlight_level = highlight_n + 1
@@ -120,7 +93,7 @@ else
 end
 
 # Prepare plot and draw shaded rectangles (use seriestype=:shape for compatibility)
-plt = plot(xlabel=L"Lq", ylabel=L"\log_{10}(\mathrm{Error\ \%})", xlim=(minimum(Lq_values), maximum(Lq_values)), ylim=(ymin, ymax), dpi=500,
+plt = plot(xlabel=math_label("Lq"), ylabel=math_label("\\log_{10}(\\mathrm{Error\\ \%})"), xlim=(minimum(Lq_values), maximum(Lq_values)), ylim=(ymin, ymax), dpi=500,
            palette = :viridis, fontfamily="Computer Modern", guidefontsize=16, tickfontsize=12, legendfontsize=10, size = (540, 360))
 
 # Left rectangle (boundary-dominated)

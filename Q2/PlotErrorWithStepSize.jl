@@ -1,9 +1,5 @@
-using Base.Threads
-using Plots
-using LinearAlgebra
-using LaTeXStrings
-
 include("../SolutionFunctions.jl")
+using Plots
 
 # Ensure output directory exists
 if !isdir("Q2/Plots")
@@ -34,7 +30,7 @@ E_errors = zeros(Float64, levels_to_plot, length(N_values))
 
 println("Computing errors for $(length(N_values)) different grid sizes...")
 
-Threads.@threads for i in 1:length(N_values)
+for i in 1:length(N_values)
     N = N_values[i]
     h = L / (N + 1)
     
@@ -81,8 +77,8 @@ end
 println("Plotting results...")
 
 plt = plot(
-    xlabel = L"N",
-    ylabel = L"\mathrm{Energy\ Error\ (\%)}",
+    xlabel = math_label("N"),
+    ylabel = math_label("\\mathrm{Energy\\ Error\\ (\\%)}"),
     xscale = :log10,
     yscale = :log10,
     legend = :bottomleft,
@@ -106,13 +102,13 @@ end
 # Log-log slope should be -2
 ref_x = N_values
 ref_y = 1e4 .* (1.0 ./ ref_x).^2
-plot!(plt, ref_x, ref_y, label=L"O(1/N^2)", ls=:dash, lw=3.5, color=:black)
+plot!(plt, ref_x, ref_y, label=math_label("O(1/N^2)"), ls=:dash, lw=3.5, color=:black)
 
 # Add an annotation near the right-hand side so the reference line is obvious
 idx_annot = clamp(round(Int, 0.75 * length(ref_x)), 1, length(ref_x))
 x_annot = ref_x[idx_annot]
 y_annot = ref_y[idx_annot]
-annotate!(plt, x_annot, y_annot * 1.25, text(L"O(1/N^2)", 10, :black, "Computer Modern"))
+annotate!(plt, x_annot, y_annot * 1.25, text(math_label("O(1/N^2)"), 10, :black, "Computer Modern"))
 
 savefig(plt, "Q2/Plots/Error_vs_StepSize_P$(round(Int, P))_L$(round(Int, L)).png")
 println("Done. Plot saved to Q2/Plots/Error_vs_StepSize_P$(round(Int, P))_L$(round(Int, L)).png")
