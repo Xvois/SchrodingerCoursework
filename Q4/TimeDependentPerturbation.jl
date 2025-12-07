@@ -1,6 +1,7 @@
 include("../SolutionFunctions.jl")
 using Plots
 using LaTeXStrings
+using Printf
 
 # Parameters
 P = 30.0                 # Choose p so that there are at least three bound states
@@ -101,10 +102,8 @@ zoom_end = zoom_start + zoom_width
 idx_zoom = findall(t -> (t >= zoom_start) && (t <= zoom_end), t_scaled)
 
 pl_left = plot(t_scaled, magnitudes[1, :], label="n=0 (ground)", lw=2,
-    xlabel=L"t\Omega/(2\pi)", ylabel=L"|c_n|",
-    title="State Magnitudes vs Scaled Time",
-    titlefont=font(22, "Computer Modern"), guidefont=font(16), tickfont=font(12),
-    legend=:topleft, legendfontsize=12)
+    xlabel=L"t\Omega/(2\pi)", ylabel=L"|c_n|", guidefont=font(16), tickfont=font(12),
+    legend=:left, legendfontsize=12)
 plot!(pl_left, t_scaled, magnitudes[2, :], label="n=1", lw=2)
 plot!(pl_left, t_scaled, magnitudes[3, :], label="n=2 (resonant)", lw=2, color=:green)
 if size(magnitudes, 1) >= 4
@@ -112,22 +111,14 @@ if size(magnitudes, 1) >= 4
 end
 
 
-pl_right = plot(t_scaled[idx_zoom], oscillation_n2[idx_zoom], label="n=2 micro-oscillation",
-    lw=1.5, color=:green,
-    xlabel=L"t\Omega/(2\pi)", ylabel=L"\Delta |c_2|",
-    title="N=2 Micro-oscillation (zoom)",
-    titlefont=font(20, "Computer Modern"), guidefont=font(14), tickfont=font(12),
-    legendfontsize=10)
-hline!(pl_right, [0.0], ls=:dash, color=:black, label="")
-
-
-plt_combined = plot(pl_left, pl_right, layout = (1, 2), size=(2000, 700), dpi=300)
-savefig(plt_combined, "Q4/state_magnitudes_sidebyside.png")
-println("Saved Q4/state_magnitudes_sidebyside.png")
+# Only keep the left/main plot for a cleaner figure
+plt_combined = plot(pl_left, size=(620, 350), dpi=500, margin=2Plots.mm)
+savefig(plt_combined, "Q4/state_magnitudes.png")
+println("Saved Q4/state_magnitudes.png")
 
 # Check total probability conservation (sum of squared magnitudes)
 total_prob = sum(abs2.(coeffs_matrix), dims=1)[:]
-plt_prob = plot(t_scaled, total_prob, label=L"\sum |c_n|^2", lw=2, 
+plt_prob = plot(t_scaled, total_prob, label=L"\sum |c_n|^2", lw=1.5, 
     xlabel=L"t\Omega/(2\pi)", ylabel="Total Probability", 
      title="Probability Conservation Check", dpi=300,
      fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)

@@ -77,35 +77,13 @@ magnitudes = abs.(coeffs_matrix)         # |cₙ(τ)|
 times = range(0, T_final, length=nsteps+1)
 t_scaled = times .* Omega ./ (2 * pi)
 
-# Plot magnitudes of first few states
-plt_mag = plot(t_scaled, magnitudes[1, :], label="n=0 (ground)", lw=2, 
-    xlabel=L"t\\Omega/(2\\pi)", ylabel=L"|c_n|", title="State Magnitudes vs Scaled Time (Long Run)", dpi=300,
-     fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)
-plot!(plt_mag, t_scaled, magnitudes[2, :], label="n=1", lw=2)
-plot!(plt_mag, t_scaled, magnitudes[3, :], label="n=2 (resonant)", lw=2)
-if size(magnitudes, 1) >= 4
-    plot!(plt_mag, t_scaled, magnitudes[4, :], label="n=3", lw=2)
-end
-savefig(plt_mag, "Q4/state_magnitudes_long.png")
-println("Saved Q4/state_magnitudes_long.png")
-
-# Perform FFT on coefficients of ground and second excited states
-# Apply Hanning Window
+# Apply Hanning window and compute FFTs for coefficients
 win = hanning_window(length(coeffs_matrix[1, :]))
 coeffs_0_windowed = coeffs_matrix[1, :] .* win
 coeffs_2_windowed = coeffs_matrix[3, :] .* win
 
 f, S = discrete_fft(coeffs_0_windowed, dt)
 f2, S2 = discrete_fft(coeffs_2_windowed, dt)
-
-plt_fft = plot(f, abs.(S), label=L"n=0 (f \\approx |\\epsilon_0|/2\\pi)", xlabel="Frequency f", ylabel="|FFT|", 
-     title="FFT of Coefficients (Long Simulation)", xlim=(0, 0.25), lw=2, dpi=300,
-     fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)
-plot!(plt_fft, f2, abs.(S2), label=L"n=2 (f \\approx |\\epsilon_2|/2\\pi)", lw=2)
-
-
-savefig(plt_fft, "Q4/fft_coefficients_long.png")
-println("Saved Q4/fft_coefficients_long.png")
 
 # --- FFT of Probabilities ---
 println("Computing FFT of probabilities...")
@@ -137,24 +115,18 @@ Omega_R = eta * V_20_exact
 f_Rabi = Omega_R / (2π)
 println("Estimated Rabi frequency f_Rabi ≈ $f_Rabi")
 
-plt_prob_fft = plot(fp, abs.(Sp0), label=L"\mathrm{FFT}(|c_0|^2 - \bar{c}_0)", xlabel="Frequency f", ylabel="Magnitude",
-                    title="FFT of State Probabilities (Rabi Oscillation)", xlim=(0, 0.01), lw=2, dpi=300,
-                    fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)
-plot!(plt_prob_fft, fp2, abs.(Sp2), label=L"\mathrm{FFT}(|c_2|^2 - \bar{c}_2)", lw=2, ls=:dash)
-vline!([f_Rabi], ls=:dot, color=:green, label="Est. Rabi Freq")
-
-savefig(plt_prob_fft, "Q4/fft_probabilities_long.png")
-println("Saved Q4/fft_probabilities_long.png")
+# Prepare FFT of probabilities (we will only show the zoomed splitting below)
+plt_prob_fft = nothing
 
 # --- Zoomed in Plot for Splitting ---
 println("Generating zoomed-in plot for Rabi splitting...")
 f0_center = abs(epsilon_0) / (2π)
 f2_center = abs(epsilon_2) / (2π)
-span = 0.003  # Narrow window to see the splitting
+span = 0.003  # Wider window to show all features including the third peak
 
 # Use zero-padding to increase FFT resolution (interpolation)
 # Apply window BEFORE padding
-pad_factor = 10
+pad_factor = 2
 n_pad = length(coeffs_matrix[1, :]) * pad_factor
 coeffs_0_padded = [coeffs_0_windowed; zeros(ComplexF64, n_pad)]
 coeffs_2_padded = [coeffs_2_windowed; zeros(ComplexF64, n_pad)]
@@ -183,43 +155,18 @@ observed_splitting_0 = abs(top_peaks_0[1] - top_peaks_0[2])
 println("Observed Splitting (n=0): $observed_splitting_0")
 println("Theoretical Splitting: $f_Rabi")
 
-p1 = plot(f_pad, abs.(S_pad0), title=L"n=0\ \mathrm{Splitting\ (Ground)}", xlabel="Frequency", ylabel="|FFT|", 
+p1 = plot(f_pad, abs.(S_pad0), xlabel="Frequency", ylabel=L"|FFT|",
           xlim=(f0_center - span, f0_center + span), legend=false, lw=2,
-          fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)
+          titlefont=font(22, "Computer Modern"), guidefont=font(16), tickfont=font(12), fontfamily="Computer Modern",
+          size=(620, 350), dpi=500, margin=6Plots.mm)
 # Mark the OBSERVED peaks
 vline!(p1, top_peaks_0, ls=:dot, c=:red, label="Observed")
 
-# Annotate splitting
+# Annotate splitting with Delta f label
 y_arrow = maximum(S_window_0) * 0.8
 plot!(p1, [top_peaks_0[1], top_peaks_0[2]], [y_arrow, y_arrow], arrow=:both, color=:black, lw=1.5)
-annotate!(p1, (top_peaks_0[1] + top_peaks_0[2])/2, y_arrow * 1.1, text(L"\\Omega_R / 2\\pi", 10, :bottom))
+annotate!(p1, (top_peaks_0[1] + top_peaks_0[2])/2, y_arrow * 1.15, text(L"\Delta f", 14, :bottom))
 
-
-# Find actual peaks for n=2
-idx_window_2 = findall(x -> f2_center - span <= x <= f2_center + span, f_pad2)
-f_window_2 = f_pad2[idx_window_2]
-S_window_2 = abs.(S_pad2[idx_window_2])
-
-peaks_2_indices = []
-for i in 2:length(S_window_2)-1
-    if S_window_2[i] > S_window_2[i-1] && S_window_2[i] > S_window_2[i+1]
-        push!(peaks_2_indices, i)
-    end
-end
-sort!(peaks_2_indices, by = i -> S_window_2[i], rev=true)
-top_peaks_2 = f_window_2[peaks_2_indices[1:2]]
-observed_splitting_2 = abs(top_peaks_2[1] - top_peaks_2[2])
-
-p2 = plot(f_pad2, abs.(S_pad2), title=L"n=2\ \mathrm{Splitting\ (Resonant)}", xlabel="Frequency", ylabel="|FFT|", 
-          xlim=(f2_center - span, f2_center + span), legend=false, lw=2, color=:green,
-          fontfamily="Computer Modern", guidefontsize=12, tickfontsize=10)
-vline!(p2, top_peaks_2, ls=:dot, c=:red)
-
-# Annotate splitting
-y_arrow2 = maximum(S_window_2) * 0.8
-plot!(p2, [top_peaks_2[1], top_peaks_2[2]], [y_arrow2, y_arrow2], arrow=:both, color=:black, lw=1.5)
-annotate!(p2, (top_peaks_2[1] + top_peaks_2[2])/2, y_arrow2 * 1.1, text(L"\\Omega_R / 2\\pi", 10, :bottom))
-
-plt_zoom = plot(p1, p2, layout=(1, 2), size=(1000, 400), dpi=300, margin=5Plots.mm)
-savefig(plt_zoom, "Q4/fft_splitting_zoom.png")
+# Save with consistent figure sizing
+savefig(p1, "Q4/fft_splitting_zoom.png")
 println("Saved Q4/fft_splitting_zoom.png")
